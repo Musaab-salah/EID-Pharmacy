@@ -1,0 +1,107 @@
+:root {
+  font-family: system-ui, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+body {
+  margin: 0;
+  background: #f7f7f7;
+}
+
+.centered {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.pos {
+  min-height: 100vh;
+}
+
+.pos-header {
+  background: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pos-content {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+
+.left,
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.product-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cart-line {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.totals {
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+input,
+button,
+select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+button {
+  cursor: pointer;
+}
+
+@media print {
+  body {
+    width: 80mm;
+  }
+
+  .pos-header,
+  .left {
+    display: none;
+  }
+
+  .right {
+    width: 80mm;
+  }
+
+  .receipt {
+    box-shadow: none;
+    border: none;
+  }
+}
