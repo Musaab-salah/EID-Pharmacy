@@ -14,11 +14,15 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
   const menuItems = [
     { key: '/', label: <Link to="/">{t('dashboard')}</Link> },
     { key: '/products', label: <Link to="/products">{t('products')}</Link> },
+    { key: '/categories', label: <Link to="/categories">{t('categories')}</Link> },
     { key: '/batches', label: <Link to="/batches">{t('batches')}</Link> },
     { key: '/users', label: <Link to="/users">{t('users')}</Link> },
     { key: '/branches', label: <Link to="/branches">{t('branches')}</Link> },
     { key: '/customers', label: <Link to="/customers">{t('customers')}</Link> },
+    { key: '/payment-accounts', label: <Link to="/payment-accounts">{t('payment_accounts')}</Link> },
     { key: '/inventory', label: <Link to="/inventory">{t('inventory')}</Link> },
+    { key: '/suppliers', label: <Link to="/suppliers">{t('suppliers')}</Link> },
+    { key: '/purchases', label: <Link to="/purchases">{t('purchase_invoices')}</Link> },
     { key: '/reports', label: <Link to="/reports">{t('reports')}</Link> },
   ]
 

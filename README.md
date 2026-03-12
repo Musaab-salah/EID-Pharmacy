@@ -43,6 +43,11 @@ The command `python manage.py seed_data` creates:
 - POS uses FEFO: the earliest expiry batch is selected automatically for each product.
 - Thermal receipt printing uses the browser print dialog with 80mm width.
 
+## Documentation
+- **وثائق النظام (عربي)**: [docs/SYSTEM_DOCUMENTATION_AR.md](docs/SYSTEM_DOCUMENTATION_AR.md) — دليل شامل للنظام
+- **التقارير والميزات**: [docs/FEATURES_REPORTS.md](docs/FEATURES_REPORTS.md)
+- **تنبيهات النظام**: [docs/SYSTEM_ALERTS_SPECIFICATION.md](docs/SYSTEM_ALERTS_SPECIFICATION.md)
+
 ## Notes
 - CORS is open for local development.
-- Product images are optional and currently a placeholder field in the backend.
+- Product images are optional; upload via Admin → Products.

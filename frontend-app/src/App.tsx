@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Login from './pages/Login'
-import Pos from './pages/Pos'
+import AppShell from './layout/AppShell'
 import { getToken } from './auth'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
@@ -25,7 +25,7 @@ const App = () => {
             path="/"
             element={
               <RequireAuth>
-                <Pos />
+                <AppShell />
               </RequireAuth>
             }
           />
