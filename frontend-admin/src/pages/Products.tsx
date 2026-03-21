@@ -1,7 +1,11 @@
 import { Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
+import { UploadOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
+import { API_BASE } from '../config'
+import PageObjective from '../components/PageObjective'
+import ImportExcelModal from '../components/admin/ImportExcelModal'
 import { exportToPdf, printTable } from '../utils/exportUtils'
 
 type Product = {
@@ -22,6 +26,11 @@ type Product = {
   min_quantity: number
   image?: string
   place_of_manufacture?: string
+  product_type?: string
+  strips_per_box?: number
+  pills_per_strip?: number
+  price_per_strip?: number
+  price_per_box?: number
 }
 
 const Products = () => {
@@ -33,19 +42,38 @@ const Products = () => {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false)
+  const [importExcelOpen, setImportExcelOpen] = useState(false)
   const [form] = Form.useForm<Product>()
+  const [supplierForm] = Form.useForm<{ name_en: string; name_ar: string; phone: string; address: string }>()
 
   const load = async () => {
     const res = await api.get('/products/')
     setItems(res.data)
   }
 
+  const loadSuppliers = () => api.get('/suppliers/').then((res) => setSuppliers(res.data))
+
   useEffect(() => {
     load()
     api.get('/categories/').then((res) => setCategories(res.data))
-    api.get('/suppliers/').then((res) => setSuppliers(res.data))
+    loadSuppliers()
     api.get('/branches/').then((res) => setBranches(res.data))
   }, [])
+
+  const handleCreateSupplier = async (values: { name_en: string; name_ar: string; phone: string; address: string }) => {
+    try {
+      const res = await api.post('/suppliers/', values)
+      const newSupplier = res.data
+      setSuppliers((prev) => [...prev, newSupplier])
+      form.setFieldValue('supplier', newSupplier.id)
+      setSupplierModalOpen(false)
+      supplierForm.resetFields()
+    } catch (error: any) {
+      const detail = error?.response?.data
+      alert(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    }
+  }
 
   const handleSubmit = async (values: Product) => {
     try {
@@ -54,7 +82,7 @@ const Products = () => {
       const appendPayload = (fd: FormData, p: Record<string, unknown>) => {
         Object.entries(p).forEach(([k, v]) => {
           if (k === 'branches') return
-          if (v != null && v !== '') fd.append(k, String(v))
+          if (v != null && v !== '' && v !== undefined) fd.append(k, String(v))
         })
         fd.append('branches', JSON.stringify(branchesArr))
       }
@@ -92,6 +120,9 @@ const Products = () => {
     form.setFieldsValue({
       ...record,
       branches: record.branches ?? [],
+      product_type: record.product_type ?? 'default',
+      strips_per_box: record.strips_per_box ?? 1,
+      pills_per_strip: record.pills_per_strip ?? 1,
     })
   }
 
@@ -158,6 +189,7 @@ const Products = () => {
 
   return (
     <div>
+      <PageObjective objectiveKey="page_objective_products" />
       <Space style={{ marginBottom: 16 }} wrap>
         <Typography.Title level={3}>{t('products')}</Typography.Title>
         <Button type="primary" onClick={() => setOpen(true)}>
@@ -165,7 +197,16 @@ const Products = () => {
         </Button>
         <Button onClick={handlePrint}>{t('print')}</Button>
         <Button onClick={handleExportPdf}>{t('export_pdf')}</Button>
+        <Button icon={<UploadOutlined />} onClick={() => setImportExcelOpen(true)}>
+          {t('import_products_excel')}
+        </Button>
       </Space>
+
+      <ImportExcelModal
+        open={importExcelOpen}
+        onClose={() => setImportExcelOpen(false)}
+        onSuccess={load}
+      />
       <Table
         rowKey="id"
         dataSource={items}
@@ -177,7 +218,7 @@ const Products = () => {
             render: (v: string) =>
               v ? (
                 <img
-                  src={`http://localhost:8000${v.startsWith('/') ? '' : '/media/'}${v}`}
+                  src={`${API_BASE}${v.startsWith('/') ? '' : '/media/'}${v}`}
                   alt=""
                   style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }}
                 />
@@ -243,11 +284,33 @@ const Products = () => {
           <Form.Item name="supplier" label={t('supplier')} rules={[{ required: true }]}>
             <Select
               allowClear
+              showSearch
+              optionFilterProp="label"
               placeholder={t('select_supplier')}
               options={suppliers.map((s) => ({
                 value: s.id,
                 label: `${s.name_en} - ${s.name_ar}`,
               }))}
+              popupRender={(menu) => (
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  {menu}
+                  <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                    <Button
+                      type="link"
+                      block
+                      style={{ textAlign: 'start' }}
+                      onClick={() => setSupplierModalOpen(true)}
+                    >
+                      + {t('add_new_supplier')}
+                    </Button>
+                  </div>
+                </div>
+              )}
             />
           </Form.Item>
           <Form.Item name="branches" label={t('product_branches')} initialValue={[]}>
@@ -260,6 +323,99 @@ const Products = () => {
                 label: i18n.language === 'ar' ? b.name_ar : b.name_en,
               }))}
             />
+          </Form.Item>
+          <Form.Item name="product_type" label={t('product_type')} initialValue="default">
+            <Select
+              options={[
+                { value: 'default', label: t('product_type_default') },
+                { value: 'pills', label: t('product_type_pills') },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.product_type !== curr.product_type}>
+            {({ getFieldValue }) =>
+              getFieldValue('product_type') === 'pills' && (
+                <>
+                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    {t('pills_pricing')}
+                  </Typography.Text>
+                  <Form.Item
+                    name="strips_per_box"
+                    label={t('strips_per_box')}
+                    rules={[
+                      { required: true, message: t('err_strips_required') },
+                      {
+                        validator: (_, v) =>
+                          v == null || v === '' || (Number(v) >= 1)
+                            ? Promise.resolve()
+                            : Promise.reject(t('err_values_positive')),
+                      },
+                    ]}
+                    initialValue={1}
+                  >
+                    <Input type="number" min={1} />
+                  </Form.Item>
+                  <Form.Item
+                    name="pills_per_strip"
+                    label={t('pills_per_strip')}
+                    rules={[
+                      { required: true, message: t('err_pills_required') },
+                      {
+                        validator: (_, v) =>
+                          v == null || v === '' || (Number(v) >= 1)
+                            ? Promise.resolve()
+                            : Promise.reject(t('err_values_positive')),
+                      },
+                    ]}
+                    initialValue={1}
+                  >
+                    <Input type="number" min={1} />
+                  </Form.Item>
+                  <Form.Item
+                    name="price_per_strip"
+                    label={t('price_per_strip')}
+                    rules={[
+                      { required: true, message: t('err_price_strip_required') },
+                      {
+                        validator: (_, v) =>
+                          v == null || v === '' || (Number(v) >= 0)
+                            ? Promise.resolve()
+                            : Promise.reject(t('err_values_positive')),
+                      },
+                    ]}
+                  >
+                    <Input type="number" min={0} step={0.01} />
+                  </Form.Item>
+                  <Form.Item
+                    name="price_per_box"
+                    label={t('price_per_box')}
+                    rules={[
+                      {
+                        validator: (_, v) =>
+                          v == null || v === '' || (Number(v) >= 0)
+                            ? Promise.resolve()
+                            : Promise.reject(t('err_values_positive')),
+                      },
+                    ]}
+                  >
+                    <Input type="number" min={0} step={0.01} />
+                  </Form.Item>
+                  <Form.Item noStyle shouldUpdate>
+                    {({ getFieldValue }) => {
+                      const s = getFieldValue('strips_per_box') || 1
+                      const p = getFieldValue('pills_per_strip') || 1
+                      return (
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {t('pills_helper')
+                            .replace('{strips}', String(s))
+                            .replace('{pills}', String(Number(s) * Number(p)))}
+                        </Typography.Text>
+                      )
+                    }}
+                  </Form.Item>
+                </>
+              )
+            }
           </Form.Item>
           <Form.Item name="name_en" label={t('name_en')} rules={[{ required: true }]}>
             <Input />
@@ -302,12 +458,37 @@ const Products = () => {
             {editing?.image && !imageFile && (
               <div style={{ marginTop: 8 }}>
                 <img
-                  src={`http://localhost:8000${editing.image.startsWith('/') ? '' : '/media/'}${editing.image}`}
+                  src={`${API_BASE}${editing.image.startsWith('/') ? '' : '/media/'}${editing.image}`}
                   alt=""
                   style={{ maxHeight: 80 }}
                 />
               </div>
             )}
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={supplierModalOpen}
+        onCancel={() => {
+          setSupplierModalOpen(false)
+          supplierForm.resetFields()
+        }}
+        onOk={() => supplierForm.submit()}
+        title={t('add_new_supplier')}
+      >
+        <Form form={supplierForm} layout="vertical" onFinish={handleCreateSupplier}>
+          <Form.Item name="name_en" label={t('name_en')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="name_ar" label={t('name_ar')} rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="phone" label={t('phone')}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="address" label={t('address')}>
+            <Input />
           </Form.Item>
         </Form>
       </Modal>

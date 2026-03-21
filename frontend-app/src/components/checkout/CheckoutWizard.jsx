@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import ProductsPage from './ProductsPage'
 import CustomerDetails from './CustomerDetails'
 import PaymentMethod from './PaymentMethod'
@@ -6,13 +7,13 @@ import InvoicePreview from './InvoicePreview'
 import { useCheckout } from '../../context/CheckoutContext'
 import api from '../../api'
 import { getToken } from '../../auth'
-
-const API_BASE = 'http://localhost:8000/api'
+import { API_BASE } from '../../config'
 
 const CheckoutWizard = () => {
   const { step, setStep } = useCheckout()
   const [products, setProducts] = useState([])
   const [batches, setBatches] = useState([])
+  const [branches, setBranches] = useState([])
   const [search, setSearch] = useState('')
   const [barcode, setBarcode] = useState('')
   const [category, setCategory] = useState('all')
@@ -21,17 +22,36 @@ const CheckoutWizard = () => {
   const [invoice, setInvoice] = useState(null)
   const [receiptItems, setReceiptItems] = useState([])
 
+  const loadProducts = async () => {
+    try {
+      const [productsRes, batchesRes] = await Promise.all([
+        api.get('/products/'),
+        api.get('/batches/'),
+      ])
+      setProducts(productsRes.data || [])
+      setBatches(batchesRes.data || [])
+    } catch (err) {
+      if (err?.response?.status !== 401) console.error(err)
+    }
+  }
+
   useEffect(() => {
     const load = async () => {
       try {
-        const [productsRes, batchesRes, userRes] = await Promise.all([
+        const [productsRes, batchesRes, userRes, branchesRes] = await Promise.all([
           api.get('/products/'),
           api.get('/batches/'),
           api.get('/users/me/'),
+          api.get('/branches/').catch(() => ({ data: [] })),
         ])
         setProducts(productsRes.data || [])
         setBatches(batchesRes.data || [])
         setUserInfo(userRes.data || null)
+        setBranches(branchesRes.data || [])
+      } catch (err) {
+        if (err?.response?.status !== 401) {
+          console.error('CheckoutWizard load error:', err)
+        }
       } finally {
         setLoading(false)
       }
@@ -88,18 +108,30 @@ const CheckoutWizard = () => {
     return products.map((p) => {
       const productBatches = byProduct[p.id] || []
       const stock = productBatches.reduce((sum, b) => sum + (b.qty_on_hand || 0), 0)
+      const isPills = p.product_type === 'pills'
+      const stripsPerBox = Number(p.strips_per_box) || 1
+      const pillsPerStrip = Number(p.pills_per_strip) || 1
+      const pricePerStrip = p.price_per_strip != null ? Number(p.price_per_strip) : null
+      const pricePerBox = p.price_per_box != null ? Number(p.price_per_box) : null
       return {
         id: p.id,
         name: p.name_ar || p.name_en,
         desc: p.place_of_manufacture || '',
+        supplierName: p.supplier_name_ar || p.supplier_name_en || '',
+        placeOfManufacture: p.place_of_manufacture || '',
         sku: p.sku || '-',
         barcode: p.barcode || '',
         categoryId: p.category || null,
         categoryName: p.category_name_ar || p.category_name_en || '',
-        image: p.image ? `${API_BASE.replace('/api', '')}${p.image.startsWith('/') ? '' : '/media/'}${p.image}` : '',
+        image: p.image ? `${API_BASE}${p.image.startsWith('/') ? '' : '/media/'}${p.image}` : '',
         price: Number(p.price || 0),
         stock,
         batches: productBatches,
+        isPills,
+        stripsPerBox,
+        pillsPerStrip,
+        pricePerStrip,
+        pricePerBox,
       }
     })
   }, [products, batches])
@@ -147,9 +179,9 @@ const CheckoutWizard = () => {
     }
 
     const paymentProof = payload.payment_proof
-    const isTransferWithProof = payload.payment_method === 'TRANSFER' && paymentProof instanceof File
+    const isTransfer = payload.payment_method === 'TRANSFER'
 
-    if (isTransferWithProof) {
+    if (isTransfer) {
       const form = new FormData()
       form.append('branch', payload.branch)
       form.append('cashier', payload.cashier)
@@ -158,13 +190,15 @@ const CheckoutWizard = () => {
       form.append('tax', payload.tax ?? 0)
       form.append('payment_method', 'TRANSFER')
       form.append('payment_account', payload.payment_account || '')
+      form.append('transaction_number', payload.transaction_number || '')
       form.append('lines', JSON.stringify(payload.lines || []))
-      form.append('payment_proof', paymentProof)
+      if (paymentProof instanceof File) form.append('payment_proof', paymentProof)
       return api.post('/orders/create/', form)
     }
 
-    const { payment_proof: _, ...rest } = payload
-    const finalPayload = { ...rest, customer: customerId }
+    const { payment_proof: _, transaction_number: __, payment_account: ___, ...rest } = payload
+    const finalPayload = { ...rest }
+    if (customerId != null) finalPayload.customer = customerId
     return api.post('/orders/create/', finalPayload)
   }
 
@@ -192,8 +226,17 @@ const CheckoutWizard = () => {
       receiptItems={receiptItems}
       setReceiptItems={setReceiptItems}
       onDing={playDing}
+      reloadProducts={loadProducts}
+      branches={branches}
     />
   )
+}
+
+const STEP_OBJECTIVES = {
+  1: 'app_objective_products',
+  2: 'app_objective_customer',
+  3: 'app_objective_payment',
+  4: 'app_objective_invoice',
 }
 
 const CheckoutInner = ({
@@ -215,7 +258,10 @@ const CheckoutInner = ({
   receiptItems,
   setReceiptItems,
   onDing,
+  reloadProducts,
+  branches,
 }) => {
+  const { t } = useTranslation()
   const { cart, clearCart } = useCheckout()
   const cartCount = cart.reduce((sum, line) => sum + line.qty, 0)
 
@@ -227,8 +273,27 @@ const CheckoutInner = ({
       clearCart()
       setStep(4)
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data || err?.message || 'فشل إنشاء الطلب'
-      alert(typeof msg === 'object' ? JSON.stringify(msg) : msg)
+      const data = err?.response?.data
+      let msg = data?.detail
+      if (!msg && typeof data === 'object') {
+        const flatten = (obj, prefix = '') => {
+          const parts = []
+          for (const [k, v] of Object.entries(obj)) {
+            const key = prefix ? `${prefix}.${k}` : k
+            if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && v[0] !== null) {
+              v.forEach((item, i) => { parts.push(...flatten(item, `${key}[${i}]`)) })
+            } else if (Array.isArray(v)) parts.push(`${key}: ${v.join(', ')}`)
+            else if (typeof v === 'object' && v !== null) parts.push(...flatten(v, key))
+            else parts.push(`${key}: ${v}`)
+          }
+          return parts
+        }
+        const parts = flatten(data)
+        msg = parts.length ? parts.join('\n') : JSON.stringify(data)
+      }
+      msg = msg || err?.message || 'فشل إنشاء الطلب'
+      console.error('Order create error:', err?.response?.status, data)
+      alert(msg)
     }
   }
 
@@ -267,6 +332,11 @@ const CheckoutInner = ({
         </div>
       </div>
 
+      {STEP_OBJECTIVES[step] && (
+        <p className="text-sm text-gray-500 mb-3">
+          <strong>{t('page_objective')}:</strong> {t(STEP_OBJECTIVES[step])}
+        </p>
+      )}
       <div className="transition-all duration-200 animate-fade">
         {step === 1 && (
           <ProductsPage
@@ -280,6 +350,8 @@ const CheckoutInner = ({
             setCategory={setCategory}
             onNext={() => setStep(2)}
             onDing={onDing}
+            reloadProducts={reloadProducts}
+            branches={branches}
           />
         )}
 

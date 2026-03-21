@@ -16,6 +16,8 @@ import Inventory from './pages/Inventory'
 import Reports from './pages/Reports'
 import Suppliers from './pages/Suppliers'
 import PurchaseInvoices from './pages/PurchaseInvoices'
+import Sales from './pages/Sales'
+import SyncFromBatches from './pages/SyncFromBatches'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const token = getToken()
@@ -44,6 +46,7 @@ const App = () => {
               </RequireAuth>
             }
           />
+          <Route path="/import-excel" element={<Navigate to="/products" replace />} />
           <Route
             path="/products"
             element={
@@ -70,6 +73,16 @@ const App = () => {
               <RequireAuth>
                 <AdminLayout>
                   <Batches />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/sync-batches"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <SyncFromBatches />
                 </AdminLayout>
               </RequireAuth>
             }
@@ -140,6 +153,16 @@ const App = () => {
               <RequireAuth>
                 <AdminLayout>
                   <PurchaseInvoices />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/sales"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <Sales />
                 </AdminLayout>
               </RequireAuth>
             }

@@ -2,11 +2,13 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    BatchImportViewSet,
     BatchViewSet,
     BranchViewSet,
     CategoryViewSet,
     CustomerViewSet,
     InventoryViewSet,
+    NotificationViewSet,
     PaymentAccountViewSet,
     ProductViewSet,
     PurchaseInvoiceViewSet,
@@ -25,11 +27,13 @@ router.register("purchases", PurchaseInvoiceViewSet)
 router.register("payment-accounts", PaymentAccountViewSet)
 router.register("users", UserViewSet)
 router.register("products", ProductViewSet)
+router.register("batch-imports", BatchImportViewSet, basename="batch-imports")
 router.register("batches", BatchViewSet)
 router.register("customers", CustomerViewSet)
 router.register("sales", SaleInvoiceViewSet)
 router.register("sale-lines", SaleLineViewSet)
 router.register("inventory", InventoryViewSet, basename="inventory")
+router.register("notifications", NotificationViewSet, basename="notifications")
 router.register("reports", ReportViewSet, basename="reports")
 
 urlpatterns = [

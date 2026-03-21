@@ -12,6 +12,7 @@ const Login = () => {
     const response = await api.post('/auth/token/', {
       email: values.email,
       password: values.password,
+      source: 'admin',
     })
     setToken(response.data.access)
     navigate('/')
@@ -21,6 +22,9 @@ const Login = () => {
     <div className="centered">
       <Card style={{ width: 360 }}>
         <Typography.Title level={3}>{t('login')}</Typography.Title>
+        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
+          {t('page_objective')}: {t('page_objective_login')}
+        </Typography.Text>
         <Form layout="vertical" onFinish={handleSubmit}>
           <Form.Item
             label={t('email')}

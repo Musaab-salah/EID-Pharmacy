@@ -48,6 +48,10 @@ The command `python manage.py seed_data` creates:
 - **التقارير والميزات**: [docs/FEATURES_REPORTS.md](docs/FEATURES_REPORTS.md)
 - **تنبيهات النظام**: [docs/SYSTEM_ALERTS_SPECIFICATION.md](docs/SYSTEM_ALERTS_SPECIFICATION.md)
 
+## Production deployment
+- Full runbook: [docs/DEPLOY_PRODUCTION.md](docs/DEPLOY_PRODUCTION.md)
+- Arabic guide: [DEPLOYMENT.md](DEPLOYMENT.md)
+
 ## Notes
 - CORS is open for local development.
 - Product images are optional; upload via Admin → Products.

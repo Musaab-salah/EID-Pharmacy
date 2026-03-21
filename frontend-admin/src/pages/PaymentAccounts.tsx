@@ -2,6 +2,7 @@ import { Button, Form, Input, Modal, Select, Space, Table, Typography } from 'an
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
+import PageObjective from '../components/PageObjective'
 
 type PaymentAccount = {
   id: number
@@ -53,6 +54,7 @@ const PaymentAccounts = () => {
 
   return (
     <div>
+      <PageObjective objectiveKey="page_objective_payment_accounts" />
       <Space style={{ marginBottom: 16 }}>
         <Typography.Title level={3}>{t('payment_accounts')}</Typography.Title>
         <Button type="primary" onClick={() => setOpen(true)}>

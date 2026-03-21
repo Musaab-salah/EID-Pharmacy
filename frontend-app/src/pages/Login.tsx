@@ -20,6 +20,7 @@ const Login = () => {
       const response = await api.post('/auth/token/', {
         email,
         password,
+        source: 'app',
       })
       setToken(response.data.access)
       navigate('/')
@@ -37,7 +38,10 @@ const Login = () => {
         onSubmit={handleSubmit}
         className="bg-white rounded-xl shadow-md p-6 w-full max-w-sm"
       >
-        <h2 className="text-xl font-bold mb-4 text-center">{t('login')}</h2>
+        <h2 className="text-xl font-bold mb-2 text-center">{t('login')}</h2>
+        <p className="text-sm text-gray-500 mb-4 text-center">
+          {t('page_objective')}: {t('app_objective_login')}
+        </p>
         {error && (
           <div className="mb-4 p-2 rounded bg-red-50 text-red-600 text-sm">{error}</div>
         )}

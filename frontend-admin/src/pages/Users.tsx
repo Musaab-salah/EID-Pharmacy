@@ -2,6 +2,7 @@ import { Button, Form, Input, Modal, Select, Space, Switch, Table, Typography } 
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
+import PageObjective from '../components/PageObjective'
 
 type User = {
   id: number
@@ -56,6 +57,7 @@ const Users = () => {
 
   return (
     <div>
+      <PageObjective objectiveKey="page_objective_users" />
       <Space style={{ marginBottom: 16 }}>
         <Typography.Title level={3}>{t('users')}</Typography.Title>
         <Button type="primary" onClick={() => setOpen(true)}>

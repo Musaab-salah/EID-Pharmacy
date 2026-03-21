@@ -2,6 +2,7 @@ import { Button, Form, Input, Modal, Space, Table, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
+import PageObjective from '../components/PageObjective'
 
 type Category = {
   id: number
@@ -51,6 +52,7 @@ const Categories = () => {
 
   return (
     <div>
+      <PageObjective objectiveKey="page_objective_categories" />
       <Space style={{ marginBottom: 16 }}>
         <Typography.Title level={3}>{t('categories')}</Typography.Title>
         <Button type="primary" onClick={() => setOpen(true)}>

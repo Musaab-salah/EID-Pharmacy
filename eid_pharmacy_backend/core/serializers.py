@@ -10,6 +10,7 @@ from .models import (
     Customer,
     PaymentAccount,
     Product,
+    PurchaseDueDate,
     PurchaseInvoice,
     PurchaseLine,
     SaleInvoice,
@@ -74,18 +75,29 @@ class SupplierSerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
-    category_name_en = serializers.CharField(source="category.name_en", read_only=True)
-    category_name_ar = serializers.CharField(source="category.name_ar", read_only=True)
-    category_code = serializers.CharField(source="category.code", read_only=True)
-    supplier_name_en = serializers.CharField(
-        source="supplier.name_en", read_only=True, allow_null=True
-    )
-    supplier_name_ar = serializers.CharField(
-        source="supplier.name_ar", read_only=True, allow_null=True
-    )
+    category_name_en = serializers.SerializerMethodField()
+    category_name_ar = serializers.SerializerMethodField()
+    category_code = serializers.SerializerMethodField()
+    supplier_name_en = serializers.SerializerMethodField()
+    supplier_name_ar = serializers.SerializerMethodField()
     branches = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Branch.objects.all(), required=False
     )
+
+    def get_category_name_en(self, obj):
+        return obj.category.name_en if obj.category else None
+
+    def get_category_name_ar(self, obj):
+        return obj.category.name_ar if obj.category else None
+
+    def get_category_code(self, obj):
+        return obj.category.code if obj.category else None
+
+    def get_supplier_name_en(self, obj):
+        return obj.supplier.name_en if obj.supplier else None
+
+    def get_supplier_name_ar(self, obj):
+        return obj.supplier.name_ar if obj.supplier else None
 
     class Meta:
         model = Product
@@ -94,10 +106,10 @@ class ProductSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from datetime import date, timedelta
 
-        branches_data = validated_data.pop("branches", [])
+        branches = validated_data.pop("branches", [])
         product = Product.objects.create(**validated_data)
-        product.branches.set(branches_data)
-        for branch in branches_data:
+        product.branches.set(branches)
+        for branch in branches:
             Batch.objects.get_or_create(
                 product=product,
                 branch=branch,
@@ -113,13 +125,13 @@ class ProductSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         from datetime import date, timedelta
 
-        branches_data = validated_data.pop("branches", None)
+        branches = validated_data.pop("branches", None)
         for key, value in validated_data.items():
             setattr(instance, key, value)
         instance.save()
-        if branches_data is not None:
-            instance.branches.set(branches_data)
-            for branch in branches_data:
+        if branches is not None:
+            instance.branches.set(branches)
+            for branch in branches:
                 Batch.objects.get_or_create(
                     product=instance,
                     branch=branch,
@@ -175,12 +187,34 @@ class PurchaseLineCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PurchaseLine
-        fields = ["product", "product_name", "product_name_ar", "qty", "unit_price", "line_total"]
+        fields = ["id", "product", "product_name", "product_name_ar", "qty", "unit_price", "line_total"]
         extra_kwargs = {"line_total": {"required": False}}
+
+
+class PurchaseDueDateSerializer(serializers.ModelSerializer):
+    payment_account_name = serializers.CharField(
+        source="payment_account.name_en", read_only=True
+    )
+
+    class Meta:
+        model = PurchaseDueDate
+        fields = [
+            "id", "due_date", "amount", "paid", "paid_at",
+            "payment_method", "payment_account", "payment_account_name",
+            "transaction_number", "payment_proof",
+        ]
+
+
+class PurchaseDueDateWriteSerializer(serializers.Serializer):
+    due_date = serializers.DateField()
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True
+    )
 
 
 class PurchaseInvoiceSerializer(serializers.ModelSerializer):
     lines = PurchaseLineCreateSerializer(many=True, required=False)
+    due_dates = PurchaseDueDateWriteSerializer(many=True, required=False)
     supplier_name = serializers.CharField(source="supplier.name_en", read_only=True)
     supplier_name_ar = serializers.CharField(source="supplier.name_ar", read_only=True)
     branch_name = serializers.CharField(source="branch.name_en", read_only=True)
@@ -189,8 +223,26 @@ class PurchaseInvoiceSerializer(serializers.ModelSerializer):
         model = PurchaseInvoice
         fields = "__all__"
 
+    def validate(self, data):
+        if data.get("payment_type") == PurchaseInvoice.PAYMENT_CREDIT:
+            due_dates = data.get("due_dates") or []
+            if not due_dates:
+                raise serializers.ValidationError(
+                    {"due_dates": "At least one due date is required for credit purchases."}
+                )
+        return data
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        if instance.pk:
+            ret["due_dates"] = PurchaseDueDateSerializer(
+                instance.due_dates.all(), many=True
+            ).data
+        return ret
+
     def create(self, validated_data):
         lines_data = validated_data.pop("lines", [])
+        due_dates_data = validated_data.pop("due_dates", [])
         invoice = PurchaseInvoice.objects.create(**validated_data)
         total = Decimal("0.00")
         for line in lines_data:
@@ -200,7 +252,39 @@ class PurchaseInvoiceSerializer(serializers.ModelSerializer):
             PurchaseLine.objects.create(invoice=invoice, **line)
         invoice.total = total
         invoice.save()
+        for dd in due_dates_data:
+            PurchaseDueDate.objects.create(
+                invoice=invoice,
+                due_date=dd["due_date"],
+                amount=dd.get("amount"),
+            )
         return invoice
+
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop("lines", None)
+        due_dates_data = validated_data.pop("due_dates", None)
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.save()
+        if lines_data is not None:
+            instance.lines.all().delete()
+            total = Decimal("0.00")
+            for line in lines_data:
+                line_total = line["unit_price"] * line["qty"]
+                line["line_total"] = line_total
+                total += line_total
+                PurchaseLine.objects.create(invoice=instance, **line)
+            instance.total = total
+            instance.save()
+        if due_dates_data is not None:
+            instance.due_dates.all().delete()
+            for dd in due_dates_data:
+                PurchaseDueDate.objects.create(
+                    invoice=instance,
+                    due_date=dd["due_date"],
+                    amount=dd.get("amount"),
+                )
+        return instance
 
 
 class SaleLineCreateSerializer(serializers.ModelSerializer):

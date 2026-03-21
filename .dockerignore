@@ -1,0 +1,16 @@
+.git
+.gitignore
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+eid_pharmacy_backend/db.sqlite3
+eid_pharmacy_backend/staticfiles
+eid_pharmacy_backend/media
+frontend-admin/node_modules
+frontend-app/node_modules
+**/.env
+**/.env.*
+!.env.example
+*.md
+terminals
+.cursor

@@ -23,14 +23,14 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2 space-y-4">
-        <div className="bg-white rounded-xl border p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-1">بيانات العميل</h2>
-          <p className="text-xs text-gray-500 mb-4">أدخل البيانات لتسريع العملية</p>
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow duration-300">
+          <h2 className="text-lg font-bold text-gray-800 mb-1">بيانات العميل</h2>
+          <p className="text-sm text-gray-500 mb-4">أدخل البيانات لتسريع العملية</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs text-gray-500">اسم العميل</label>
               <input
-                className="w-full rounded-lg border px-3 py-2"
+                className="w-full rounded-xl border border-gray-200 px-4 py-2.5 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 outline-none transition-all"
                 placeholder="مثال: محمد أحمد"
                 value={customer.name}
                 onChange={(e) => setCustomer((prev) => ({ ...prev, name: e.target.value }))}
@@ -41,7 +41,7 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
               <label className="text-xs text-gray-500">رقم الجوال</label>
               <div className="flex gap-2">
                 <input
-                  className="w-full rounded-lg border px-3 py-2"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-2.5 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 outline-none transition-all"
                   placeholder="05xxxxxxxx"
                   value={customer.phone}
                   onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))}
@@ -57,7 +57,7 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
                     }
                     setLoading(false)
                   }}
-                  className="rounded-lg bg-[#1677ff] text-white px-3 text-sm font-semibold"
+                  className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 text-sm font-semibold hover:from-blue-600 hover:to-blue-700 transition-all"
                 >
                   بحث
                 </button>
@@ -66,7 +66,7 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
             </div>
           </div>
           <textarea
-            className="w-full rounded-lg border px-3 py-2 mt-3"
+            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 mt-3 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 outline-none transition-all"
             placeholder="ملاحظات إضافية (اختياري)"
             value={customer.notes}
             onChange={(e) => setCustomer((prev) => ({ ...prev, notes: e.target.value }))}
@@ -74,8 +74,8 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
           {loading && <div className="text-sm text-gray-500">جاري التحقق من العميل...</div>}
         </div>
 
-        <div className="sticky bottom-4 bg-white/90 backdrop-blur border rounded-xl p-3 flex justify-end gap-2 shadow-sm">
-          <button onClick={onBack} className="rounded-lg border px-4 py-2">
+        <div className="sticky bottom-4 bg-white/95 backdrop-blur border border-gray-100 rounded-2xl p-4 flex justify-end gap-2 shadow-lg">
+          <button onClick={onBack} className="rounded-xl border border-gray-200 px-4 py-2.5 font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             رجوع
           </button>
           <button
@@ -86,7 +86,7 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
               setErrors(nextErrors)
               if (Object.keys(nextErrors).length === 0) onNext()
             }}
-            className="rounded-lg bg-[#1677ff] text-white px-4 py-2 font-semibold"
+            className="rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white px-5 py-2.5 font-semibold hover:from-blue-600 hover:to-blue-700 shadow-sm transition-all"
           >
             التالي
           </button>

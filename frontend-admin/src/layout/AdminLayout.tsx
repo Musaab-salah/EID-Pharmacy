@@ -2,6 +2,8 @@ import { Layout, Menu, Typography, Button, Space } from 'antd'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitch from '../components/LanguageSwitch'
+import NotificationBell from '../components/NotificationBell'
+import api from '../api'
 import { clearToken } from '../auth'
 
 const { Header, Content, Sider } = Layout
@@ -16,6 +18,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
     { key: '/products', label: <Link to="/products">{t('products')}</Link> },
     { key: '/categories', label: <Link to="/categories">{t('categories')}</Link> },
     { key: '/batches', label: <Link to="/batches">{t('batches')}</Link> },
+    { key: '/sync-batches', label: <Link to="/sync-batches">{t('sync_from_batches')}</Link> },
     { key: '/users', label: <Link to="/users">{t('users')}</Link> },
     { key: '/branches', label: <Link to="/branches">{t('branches')}</Link> },
     { key: '/customers', label: <Link to="/customers">{t('customers')}</Link> },
@@ -23,10 +26,16 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
     { key: '/inventory', label: <Link to="/inventory">{t('inventory')}</Link> },
     { key: '/suppliers', label: <Link to="/suppliers">{t('suppliers')}</Link> },
     { key: '/purchases', label: <Link to="/purchases">{t('purchase_invoices')}</Link> },
+    { key: '/sales', label: <Link to="/sales">{t('sales')}</Link> },
     { key: '/reports', label: <Link to="/reports">{t('reports')}</Link> },
   ]
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout/')
+    } catch {
+      // ignore
+    }
     clearToken()
     navigate('/login')
   }
@@ -48,7 +57,8 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 16px' }}>
-          <Space style={{ float: 'right' }}>
+          <Space style={{ float: 'right' }} size="middle">
+            <NotificationBell />
             <LanguageSwitch />
             <Button onClick={handleLogout}>{t('logout')}</Button>
           </Space>

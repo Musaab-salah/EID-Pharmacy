@@ -5,15 +5,19 @@ import {
   Collapse,
   Dropdown,
   Form,
+  Input,
   InputNumber,
   Select,
   Space,
   Table,
   Typography,
+  Upload,
+  Modal,
 } from 'antd'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
+import PageObjective from '../components/PageObjective'
 import { exportToPdf, printTable } from '../utils/exportUtils'
 
 type BatchRow = {
@@ -79,6 +83,17 @@ const StockAdjustForm = () => {
   )
 }
 
+type ExcelPreviewRow = {
+  batch_id: number
+  branch_id: number
+  product_name: string
+  batch_no: string
+  branch_name: string
+  system_qty: number
+  physical_qty: number
+  diff: number
+}
+
 const Inventory = () => {
   const { t, i18n } = useTranslation()
   const [batches, setBatches] = useState<BatchRow[]>([])
@@ -88,6 +103,8 @@ const Inventory = () => {
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
   const [physicalCounts, setPhysicalCounts] = useState<Record<number, number>>({})
   const [saving, setSaving] = useState(false)
+  const [excelPreview, setExcelPreview] = useState<ExcelPreviewRow[] | null>(null)
+  const [excelImportBranch, setExcelImportBranch] = useState<number | null>(null)
 
   const loadBranches = () => {
     api.get('/branches/').then((res) => setBranches(res.data))
@@ -189,6 +206,7 @@ const Inventory = () => {
 
   return (
     <div>
+      <PageObjective objectiveKey="page_objective_inventory" />
       <Space style={{ marginBottom: 16 }} wrap>
         <Typography.Title level={3}>{t('inventory_audit')}</Typography.Title>
       </Space>
@@ -211,7 +229,7 @@ const Inventory = () => {
             open={branchDropdownOpen}
             onOpenChange={setBranchDropdownOpen}
             trigger={['click']}
-            dropdownRender={() => (
+            popupRender={() => (
               <Card size="small" style={{ minWidth: 220, maxHeight: 280, overflow: 'auto' }}>
                 <Checkbox
                   checked={branchIds === 'all'}
@@ -252,8 +270,89 @@ const Inventory = () => {
           <Button onClick={loadBatches}>{t('apply')}</Button>
           <Button onClick={handlePrint}>{t('print')}</Button>
           <Button onClick={handleExportPdf}>{t('export_pdf')}</Button>
+          <Upload
+            accept=".xlsx,.xls"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              const fd = new FormData()
+              fd.append('file', file)
+              api.post('/inventory/audit/import-excel/', fd).then((res) => {
+                setExcelPreview(res.data.preview || [])
+                setExcelImportBranch(branches[0]?.id || null)
+              }).catch((e) => {
+                alert(e?.response?.data?.detail || 'Failed to parse Excel')
+              })
+              return false
+            }}
+          >
+            <Button>{t('import_excel')}</Button>
+          </Upload>
         </Space>
       </Card>
+
+      <Modal
+        title={t('excel_import_preview')}
+        open={!!excelPreview?.length}
+        onCancel={() => setExcelPreview(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setExcelPreview(null)}>{t('cancel')}</Button>,
+          <Button
+            key="apply"
+            type="primary"
+            disabled={!excelImportBranch}
+            onClick={() => {
+              if (!excelPreview?.length || !excelImportBranch) return
+              const counts = excelPreview
+                .filter((p) => p.branch_id === excelImportBranch)
+                .map((p) => ({ batch_id: p.batch_id, physical_qty: p.physical_qty }))
+              if (!counts.length) {
+                alert(t('no_batches_for_branch'))
+                return
+              }
+              api.post('/inventory/audit/apply-excel/', {
+                audit_type: auditType,
+                branch_id: excelImportBranch,
+                counts,
+              }).then(() => {
+                setExcelPreview(null)
+                loadBatches()
+              }).catch((e) => alert(e?.response?.data?.detail || 'Failed'))
+            }}
+          >
+            {t('apply_changes')}
+          </Button>,
+        ]}
+        width={700}
+      >
+        {excelPreview?.length ? (
+          <>
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              {t('excel_format_hint')}
+            </Typography.Text>
+            <Select
+              placeholder={t('branch')}
+              value={excelImportBranch}
+              onChange={setExcelImportBranch}
+              style={{ width: 200, marginBottom: 16 }}
+              options={branches.map((b) => ({ value: b.id, label: b.name_en }))}
+            />
+            <Table
+              size="small"
+              dataSource={excelPreview}
+              columns={[
+                { title: t('product'), dataIndex: 'product_name' },
+                { title: t('batch_no'), dataIndex: 'batch_no' },
+                { title: t('branch'), dataIndex: 'branch_name' },
+                { title: t('system_qty'), dataIndex: 'system_qty' },
+                { title: t('physical_stock'), dataIndex: 'physical_qty' },
+                { title: t('diff'), dataIndex: 'diff', render: (v: number) => (v !== 0 ? v : '-') },
+              ]}
+              pagination={false}
+              rowKey="batch_id"
+            />
+          </>
+        ) : null}
+      </Modal>
 
       <Card>
         <Table

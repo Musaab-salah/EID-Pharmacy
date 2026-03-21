@@ -8,10 +8,11 @@ export const CheckoutProvider = ({ children }) => {
   const [customer, setCustomer] = useState({ name: '', phone: '', notes: '' })
   const [payment, setPayment] = useState('CASH')
   const [paymentAccount, setPaymentAccount] = useState(null)
+  const [transactionNumber, setTransactionNumber] = useState('')
   const [paymentProof, setPaymentProof] = useState(null)
 
   const totals = useMemo(() => {
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0)
+    const subtotal = cart.reduce((sum, item) => sum + (item.lineTotal ?? item.price * item.qty), 0)
     const tax = 0
     const discount = 0
     return {
@@ -22,13 +23,44 @@ export const CheckoutProvider = ({ children }) => {
     }
   }, [cart])
 
-  const addItem = (product, batch) => {
+  const addItem = (product, batch, pillsOptions) => {
     if (!batch || product.stock <= 0 || batch.qty_on_hand <= 0) return false
+    if (pillsOptions) {
+      const { mode, qty, unitPrice, totalPills } = pillsOptions
+      if (totalPills > product.stock) return false
+      const lineTotal = Number(unitPrice || 0) * Number(qty || 1)
+      const lineId = `${product.id}-${batch.id}-${mode}-${Date.now()}`
+      setCart((prev) => [
+        ...prev,
+        {
+          id: lineId,
+          productId: product.id,
+          name: product.name,
+          sku: product.sku,
+          price: Number(unitPrice || 0),
+          qty: Number(qty || 1),
+          lineTotal,
+          image: product.image,
+          stock: product.stock,
+          batchId: batch.id,
+          batchNo: batch.batch_no,
+          expiry: batch.expiry_date,
+          isPills: true,
+          pillsMode: mode,
+          totalPills,
+          pillsPerStrip: product.pillsPerStrip,
+          stripsPerBox: product.stripsPerBox,
+        },
+      ])
+      return true
+    }
     setCart((prev) => {
-      const existing = prev.find((line) => line.batchId === batch.id)
+      const existing = prev.find((line) => line.batchId === batch.id && !line.isPills)
       if (existing) {
         return prev.map((line) =>
-          line.batchId === batch.id ? { ...line, qty: line.qty + 1 } : line,
+          line.batchId === batch.id && !line.isPills
+            ? { ...line, qty: line.qty + 1 }
+            : line,
         )
       }
       return [
@@ -78,6 +110,8 @@ export const CheckoutProvider = ({ children }) => {
     setPayment,
     paymentAccount,
     setPaymentAccount,
+    transactionNumber,
+    setTransactionNumber,
     paymentProof,
     setPaymentProof,
     totals,
