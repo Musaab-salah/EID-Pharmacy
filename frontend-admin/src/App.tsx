@@ -6,12 +6,18 @@ import AdminLayout from './layout/AdminLayout'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Products from './pages/Products'
+import Categories from './pages/Categories'
 import Batches from './pages/Batches'
 import Users from './pages/Users'
 import Branches from './pages/Branches'
 import Customers from './pages/Customers'
+import PaymentAccounts from './pages/PaymentAccounts'
 import Inventory from './pages/Inventory'
 import Reports from './pages/Reports'
+import Suppliers from './pages/Suppliers'
+import PurchaseInvoices from './pages/PurchaseInvoices'
+import Sales from './pages/Sales'
+import SyncFromBatches from './pages/SyncFromBatches'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const token = getToken()
@@ -40,6 +46,7 @@ const App = () => {
               </RequireAuth>
             }
           />
+          <Route path="/import-excel" element={<Navigate to="/products" replace />} />
           <Route
             path="/products"
             element={
@@ -51,11 +58,31 @@ const App = () => {
             }
           />
           <Route
+            path="/categories"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <Categories />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/batches"
             element={
               <RequireAuth>
                 <AdminLayout>
                   <Batches />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/sync-batches"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <SyncFromBatches />
                 </AdminLayout>
               </RequireAuth>
             }
@@ -91,11 +118,51 @@ const App = () => {
             }
           />
           <Route
+            path="/payment-accounts"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <PaymentAccounts />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/inventory"
             element={
               <RequireAuth>
                 <AdminLayout>
                   <Inventory />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/suppliers"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <Suppliers />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/purchases"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <PurchaseInvoices />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/sales"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <Sales />
                 </AdminLayout>
               </RequireAuth>
             }

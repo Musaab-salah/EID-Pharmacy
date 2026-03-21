@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+.venv/
+venv/
+.env
+.env.local
+
+# Django
+eid_pharmacy_backend/staticfiles/
+# Keep media/ tracked if you commit product images; ignore only large local uploads if needed:
+# eid_pharmacy_backend/media/*
+
+# Node
+node_modules/
+frontend-admin/dist/
+frontend-app/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp

@@ -17,15 +17,34 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.http import HttpResponse
+from django.urls import include, path, re_path
+from rest_framework_simplejwt.views import TokenRefreshView
 
+from core.auth_views import LogoutView, TokenObtainPairWithSessionView
+
+from .spa_views import serve_spa_asset, serve_spa_index
+
+
+def health(_request):
+    return HttpResponse("ok", content_type="text/plain")
+
+
+# Django admin at /backend-admin/ to avoid conflict with React Admin at /admin/
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("health/", health),
+    path('backend-admin/', admin.site.urls),
     path('api/', include('core.urls')),
-    path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/token/', TokenObtainPairWithSessionView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/logout/', LogoutView.as_view(), name='auth_logout'),
+    re_path(r'^admin/assets/(?P<path>.+)$', lambda r, path: serve_spa_asset(r, 'admin', path)),
+    re_path(r'^app/assets/(?P<path>.+)$', lambda r, path: serve_spa_asset(r, 'app', path)),
+    re_path(r'^admin/?$', lambda r: serve_spa_index(r, 'admin')),
+    re_path(r'^admin/(?P<path>.*)$', lambda r, path: serve_spa_index(r, 'admin', path)),
+    re_path(r'^app/?$', lambda r: serve_spa_index(r, 'app')),
+    re_path(r'^app/(?P<path>.*)$', lambda r, path: serve_spa_index(r, 'app', path)),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Product images & uploads (POS/Admin) — needed in production when not using S3
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

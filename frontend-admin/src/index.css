@@ -6,11 +6,17 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Admin design tokens */
+  --admin-bg: #f5f5f5;
+  --admin-card-bg: #fff;
+  --admin-border: #e8e8e8;
+  --admin-primary: #1677ff;
+  --admin-padding: 24px;
 }
 
 body {
   margin: 0;
-  background: #f5f5f5;
+  background: var(--admin-bg);
 }
 
 .centered {

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
 import dayjs from 'dayjs'
+import PageObjective from '../components/PageObjective'
 
 type Batch = {
   id: number
@@ -66,6 +67,7 @@ const Batches = () => {
 
   return (
     <div>
+      <PageObjective objectiveKey="page_objective_batches" />
       <Space style={{ marginBottom: 16 }}>
         <Typography.Title level={3}>{t('batches')}</Typography.Title>
         <Button type="primary" onClick={() => setOpen(true)}>
