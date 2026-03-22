@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
+// On Vercel, serve at site root so https://xxx.vercel.app/ works.
+// Locally keep /admin to match README and same-origin dev with Django.
 export default defineConfig({
   plugins: [react()],
-  base: '/admin',
+  base: process.env.VERCEL ? '/' : '/admin/',
   server: {
     port: 5173,
   },

@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { getToken, clearToken } from './auth'
 import { API_URL } from './config'
+import { loginHref } from './routerBase'
 
 const api = axios.create({
   baseURL: API_URL,
@@ -20,7 +21,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       clearToken()
       if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/app/login'
+        window.location.href = loginHref
       }
     }
     return Promise.reject(error)

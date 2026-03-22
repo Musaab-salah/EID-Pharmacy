@@ -10,6 +10,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../api'
+import { stripAdminLinkPrefix } from '../routerBase'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/ar'
@@ -127,7 +128,7 @@ const NotificationBell = () => {
       handleMarkRead(item.id)
     }
     if (item.link) {
-      const path = item.link.replace('/admin', '')
+      const path = stripAdminLinkPrefix(item.link)
       setOpen(false)
       navigate(path || '/')
     }

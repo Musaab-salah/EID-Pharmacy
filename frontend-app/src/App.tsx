@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import Login from './pages/Login'
 import AppShell from './layout/AppShell'
 import { getToken } from './auth'
+import { routerBasename } from './routerBase'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const token = getToken()
@@ -18,7 +19,7 @@ const App = () => {
 
   return (
     <div dir={dir}>
-      <BrowserRouter basename="/app">
+      <BrowserRouter basename={routerBasename}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route

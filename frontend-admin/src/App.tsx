@@ -18,6 +18,7 @@ import Suppliers from './pages/Suppliers'
 import PurchaseInvoices from './pages/PurchaseInvoices'
 import Sales from './pages/Sales'
 import SyncFromBatches from './pages/SyncFromBatches'
+import { routerBasename } from './routerBase'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const token = getToken()
@@ -33,7 +34,7 @@ const App = () => {
 
   return (
     <ConfigProvider direction={direction}>
-      <BrowserRouter basename="/admin">
+      <BrowserRouter basename={routerBasename}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
