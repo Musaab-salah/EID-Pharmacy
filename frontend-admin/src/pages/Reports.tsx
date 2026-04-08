@@ -55,6 +55,18 @@ const downloadPdf = (rows: any[], columns: { key: string; label: string }[], tit
   doc.save(filename)
 }
 
+type MyDailySession = { login_at: string; logout_at?: string | null }
+type MyDailySale = { invoice_no: string; time: string; grand_total: number }
+type ReportInvoiceLine = {
+  product_id?: number
+  qty: number
+  unit_price: number
+  product_name_ar?: string
+  product_name?: string
+}
+type AttendanceSessionCell = { login_at: string; logout_at?: string | null; minutes?: number; source?: string }
+type AttendanceReportRow = { sessions?: AttendanceSessionCell[]; [key: string]: unknown }
+
 const Reports = () => {
   const { t } = useTranslation()
   const [daily, setDaily] = useState<any>({})
@@ -333,7 +345,8 @@ const Reports = () => {
                           columns={[
                             {
                               title: t('daily_report_login_logout'),
-                              render: (_, s) => `${s.login_at} – ${s.logout_at || t('daily_report_ongoing')}`,
+                              render: (_: unknown, s: MyDailySession) =>
+                                `${s.login_at} – ${s.logout_at || t('daily_report_ongoing')}`,
                             },
                             {
                               title: t('minutes'),
@@ -358,7 +371,7 @@ const Reports = () => {
                             columns={[
                               {
                                 title: t('invoice_no'),
-                                render: (_, s) => `#${s.invoice_no} – ${s.time}`,
+                                render: (_: unknown, s: MyDailySale) => `#${s.invoice_no} – ${s.time}`,
                               },
                               {
                                 title: t('grand_total'),
@@ -399,8 +412,10 @@ const Reports = () => {
                       purchaseFilters.date_to ? dayjs(purchaseFilters.date_to) : null,
                     ]}
                     onChange={(dates) => {
-                      if (dates?.[0]) setPurchaseFilters((f) => ({ ...f, date_from: dates[0].format('YYYY-MM-DD') }))
-                      if (dates?.[1]) setPurchaseFilters((f) => ({ ...f, date_to: dates[1].format('YYYY-MM-DD') }))
+                      const df = dates?.[0]
+                      const dt = dates?.[1]
+                      if (df) setPurchaseFilters((f) => ({ ...f, date_from: df.format('YYYY-MM-DD') }))
+                      if (dt) setPurchaseFilters((f) => ({ ...f, date_to: dt.format('YYYY-MM-DD') }))
                     }}
                   />
                   <Select
@@ -470,12 +485,16 @@ const Reports = () => {
                   ]}
                   expandable={{
                     expandedRowRender: (record) => (
-                      <Table
+                      <Table<ReportInvoiceLine>
                         size="small"
                         rowKey={(r) => `${r.product_id}-${r.qty}-${r.unit_price}`}
-                        dataSource={record.lines || []}
+                        dataSource={(record.lines || []) as ReportInvoiceLine[]}
                         columns={[
-                          { title: t('product'), dataIndex: 'product_name_ar', render: (_, r) => r.product_name_ar || r.product_name },
+                          {
+                            title: t('product'),
+                            dataIndex: 'product_name_ar',
+                            render: (_: unknown, r: ReportInvoiceLine) => r.product_name_ar || r.product_name,
+                          },
                           { title: t('qty'), dataIndex: 'qty' },
                           { title: t('purchase_price'), dataIndex: 'unit_price', render: (v: number) => v?.toFixed(2) },
                           { title: t('line_total'), dataIndex: 'line_total', render: (v: number) => v?.toFixed(2) },
@@ -500,8 +519,10 @@ const Reports = () => {
                       salesFilters.date_to ? dayjs(salesFilters.date_to) : null,
                     ]}
                     onChange={(dates) => {
-                      if (dates?.[0]) setSalesFilters((f) => ({ ...f, date_from: dates[0].format('YYYY-MM-DD') }))
-                      if (dates?.[1]) setSalesFilters((f) => ({ ...f, date_to: dates[1].format('YYYY-MM-DD') }))
+                      const df = dates?.[0]
+                      const dt = dates?.[1]
+                      if (df) setSalesFilters((f) => ({ ...f, date_from: df.format('YYYY-MM-DD') }))
+                      if (dt) setSalesFilters((f) => ({ ...f, date_to: dt.format('YYYY-MM-DD') }))
                     }}
                   />
                   <Select
@@ -567,12 +588,16 @@ const Reports = () => {
                   ]}
                   expandable={{
                     expandedRowRender: (record) => (
-                      <Table
+                      <Table<ReportInvoiceLine>
                         size="small"
                         rowKey={(r) => `${r.product_id}-${r.qty}-${r.unit_price}`}
-                        dataSource={record.lines || []}
+                        dataSource={(record.lines || []) as ReportInvoiceLine[]}
                         columns={[
-                          { title: t('product'), dataIndex: 'product_name_ar', render: (_, r) => r.product_name_ar || r.product_name },
+                          {
+                            title: t('product'),
+                            dataIndex: 'product_name_ar',
+                            render: (_: unknown, r: ReportInvoiceLine) => r.product_name_ar || r.product_name,
+                          },
                           { title: t('qty'), dataIndex: 'qty' },
                           { title: t('price'), dataIndex: 'unit_price', render: (v: number) => v?.toFixed(2) },
                           { title: t('line_total'), dataIndex: 'line_total', render: (v: number) => v?.toFixed(2) },
@@ -707,9 +732,9 @@ const Reports = () => {
                     { title: t('date'), dataIndex: 'date' },
                     {
                       title: t('sessions'),
-                      render: (_, r) =>
+                      render: (_: unknown, r: AttendanceReportRow) =>
                         (r.sessions || []).length > 0 ? (
-                          (r.sessions || []).map((s, i) => (
+                          (r.sessions || []).map((s: AttendanceSessionCell, i: number) => (
                             <div key={i} style={{ marginBottom: 4 }}>
                               {s.login_at} – {s.logout_at} ({s.minutes} {t('minutes')})
                               {s.source && <span style={{ marginLeft: 8, fontSize: 10, color: '#666' }}>({s.source})</span>}

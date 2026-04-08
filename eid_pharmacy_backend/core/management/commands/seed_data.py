@@ -68,17 +68,32 @@ class Command(BaseCommand):
         ]
 
         for idx, (name_en, name_ar, category_code) in enumerate(products, start=1):
-            product, _ = Product.objects.get_or_create(
-                name_en=name_en,
-                defaults={
-                    "name_ar": name_ar,
-                    "category": category_map.get(category_code),
-                    "barcode": f"12345{idx}",
-                    "sku": f"SKU-{idx}",
-                    "price": 10 + idx,
-                    "purchase_price": 7 + idx,
-                },
-            )
+            sku = f"SKU-{idx}"
+            barcode = f"12345{idx}"
+            category = category_map.get(category_code)
+            # Prefer stable seed key (sku); name_en is not unique — duplicates break get_or_create.
+            product = Product.objects.filter(sku=sku).first()
+            if product is None:
+                product = Product.objects.filter(name_en=name_en).order_by("id").first()
+            if product is None:
+                product = Product.objects.create(
+                    name_en=name_en,
+                    name_ar=name_ar,
+                    category=category,
+                    barcode=barcode,
+                    sku=sku,
+                    price=10 + idx,
+                    purchase_price=7 + idx,
+                )
+            else:
+                product.name_en = name_en
+                product.name_ar = name_ar
+                product.category = category
+                product.barcode = barcode or product.barcode
+                product.sku = sku
+                product.price = 10 + idx
+                product.purchase_price = 7 + idx
+                product.save()
             Batch.objects.get_or_create(
                 product=product,
                 branch=branch,

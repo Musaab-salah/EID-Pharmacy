@@ -1,4 +1,4 @@
-import { Button, Modal, Select, Table, Form, InputNumber } from 'antd'
+import { Button, Modal, Table, Form, InputNumber } from 'antd'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../../api'

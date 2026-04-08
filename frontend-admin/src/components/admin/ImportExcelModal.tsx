@@ -38,7 +38,7 @@ type ImportExcelModalProps = {
 const ImportExcelModal = ({ open, onClose, onSuccess }: ImportExcelModalProps) => {
   const { t } = useTranslation()
   const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [, setUploading] = useState(false)
   const [parsed, setParsed] = useState<{
     headers: string[]
     suggested_mapping: Record<string, number>
@@ -114,7 +114,7 @@ const ImportExcelModal = ({ open, onClose, onSuccess }: ImportExcelModalProps) =
       if (r.productType === 'pills' && (Number(r.pillsPerStrip ?? r.pills_per_strip) || 0) < 1) {
         return { ...r, _status: 'error' as RowStatus, _error: t('err_pills_required') }
       }
-      const status = r.sku || r.barcode ? 'update' : 'new'
+      const status: RowStatus = r.sku || r.barcode ? 'update' : 'new'
       return { ...r, _status: status, _error: undefined }
     })
     setRows(updated)

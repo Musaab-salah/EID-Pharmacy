@@ -265,6 +265,14 @@ const CheckoutInner = ({
   const { cart, clearCart } = useCheckout()
   const cartCount = cart.reduce((sum, line) => sum + line.qty, 0)
 
+  const pharmacyName = useMemo(() => {
+    const bid = invoice?.branch ?? userInfo?.branch
+    if (bid == null) return 'صيدلية عيد'
+    const b = branches.find((x) => Number(x.id) === Number(bid))
+    const label = (b?.name_ar || b?.name_en || '').trim()
+    return label || 'صيدلية عيد'
+  }, [branches, userInfo, invoice])
+
   const handleComplete = async (payload) => {
     try {
       const res = await createOrder(payload)
@@ -304,8 +312,8 @@ const CheckoutInner = ({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div className="bg-white rounded-xl shadow-md p-4 print:shadow-none print:bg-transparent">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 print:hidden">
         <div className="flex items-center gap-3">
           {[1, 2, 3, 4].map((s) => (
             <div
@@ -333,7 +341,7 @@ const CheckoutInner = ({
       </div>
 
       {STEP_OBJECTIVES[step] && (
-        <p className="text-sm text-gray-500 mb-3">
+        <p className="text-sm text-gray-500 mb-3 print:hidden">
           <strong>{t('page_objective')}:</strong> {t(STEP_OBJECTIVES[step])}
         </p>
       )}
@@ -375,6 +383,7 @@ const CheckoutInner = ({
           <InvoicePreview
             invoice={invoice}
             items={receiptItems}
+            pharmacyName={pharmacyName}
             onPrint={() => window.print()}
             onNewSale={handleNewSale}
           />

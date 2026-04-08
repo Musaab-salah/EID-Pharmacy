@@ -35,7 +35,34 @@ body {
 }
 
 @media print {
+  @page {
+    margin: 6mm;
+    size: 80mm auto;
+  }
+
   body {
-    width: 80mm;
+    background: #fff !important;
+    width: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* إظهار منطقة الفاتورة فقط عند الطباعة */
+  body * {
+    visibility: hidden;
+  }
+
+  #receipt-print-root,
+  #receipt-print-root * {
+    visibility: visible;
+  }
+
+  #receipt-print-root {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0;
+    width: min(72mm, 100%);
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }

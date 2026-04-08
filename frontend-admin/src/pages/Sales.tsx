@@ -1,4 +1,4 @@
-import { Button, Card, DatePicker, Input, Table, Upload } from 'antd'
+import { Button, Card, DatePicker, Table, Upload } from 'antd'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'

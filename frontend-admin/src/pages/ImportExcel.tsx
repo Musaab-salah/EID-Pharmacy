@@ -1,27 +1,9 @@
-import { Button, Card, message, Space, Table, Upload, Select, Typography } from 'antd'
+import { Button, Card, message, Space, Table, Upload, Typography } from 'antd'
 import { InboxOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
 import PageObjective from '../components/PageObjective'
-
-const FIELD_OPTIONS = [
-  { value: 'productName', label: 'productName' },
-  { value: 'sku', label: 'sku' },
-  { value: 'barcode', label: 'barcode' },
-  { value: 'productType', label: 'productType' },
-  { value: 'category', label: 'category' },
-  { value: 'supplier', label: 'supplier' },
-  { value: 'pillsPerStrip', label: 'pillsPerStrip' },
-  { value: 'stripsPerBox', label: 'stripsPerBox' },
-  { value: 'pricePerStrip', label: 'pricePerStrip' },
-  { value: 'pricePerBox', label: 'pricePerBox' },
-  { value: 'stockUnit', label: 'stockUnit' },
-  { value: 'stockQty', label: 'stockQty' },
-  { value: 'batchNumber', label: 'batchNumber' },
-  { value: 'expiryDate', label: 'expiryDate' },
-  { value: 'cost', label: 'cost' },
-]
 
 type RowStatus = 'new' | 'update' | 'error'
 
@@ -51,7 +33,7 @@ type PreviewRow = {
 const ImportExcel = () => {
   const { t } = useTranslation()
   const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [, setUploading] = useState(false)
   const [parsed, setParsed] = useState<{
     headers: string[]
     suggested_mapping: Record<string, number>
@@ -112,7 +94,7 @@ const ImportExcel = () => {
       if (r.productType === 'pills' && (Number(r.pillsPerStrip ?? r.pills_per_strip) || 0) < 1) {
         return { ...r, _status: 'error' as RowStatus, _error: t('err_pills_required') }
       }
-      const status = r.sku || r.barcode ? 'update' : 'new'
+      const status: RowStatus = r.sku || r.barcode ? 'update' : 'new'
       return { ...r, _status: status, _error: undefined }
     })
     setRows(updated)

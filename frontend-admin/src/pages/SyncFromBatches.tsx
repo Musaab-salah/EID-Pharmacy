@@ -1,5 +1,4 @@
 import { Button, Card, message, Space, Table, Typography, Upload } from 'antd'
-import { InboxOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
@@ -8,7 +7,6 @@ import ConflictsTable from '../components/admin/ConflictsTable'
 
 const SyncFromBatches = () => {
   const { t } = useTranslation()
-  const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [importingBatches, setImportingBatches] = useState(false)
   const [summary, setSummary] = useState<{ created: number; updated: number; conflicts: number; skipped: number } | null>(null)

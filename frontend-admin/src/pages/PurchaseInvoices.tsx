@@ -11,11 +11,10 @@ import {
   Typography,
   message,
 } from 'antd'
-import { CheckCircleOutlined, DollarOutlined, UploadOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, DollarOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
-import dayjs from 'dayjs'
 import PageObjective from '../components/PageObjective'
 import { API_BASE } from '../config'
 
