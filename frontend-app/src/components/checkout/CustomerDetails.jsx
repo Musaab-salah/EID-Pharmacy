@@ -81,8 +81,19 @@ const CustomerDetails = ({ onBack, onNext, onLookup }) => {
           <button
             onClick={() => {
               const nextErrors = {}
-              if (!customer.name.trim()) nextErrors.name = 'حقل مطلوب'
-              if (!customer.phone.trim()) nextErrors.phone = 'حقل مطلوب'
+              const name = customer.name.trim()
+              const phone = customer.phone.trim()
+              if (phone) {
+                const digits = phone.replace(/\D/g, '')
+                if (digits.length < 7) {
+                  nextErrors.phone = 'رقم الجوال قصير أو غير صحيح'
+                } else if (!/^[\d+\-\s()]{5,50}$/.test(phone)) {
+                  nextErrors.phone = 'صيغة الرقم غير صحيحة'
+                }
+              }
+              if (name && name.length > 200) {
+                nextErrors.name = 'الاسم طويل جداً'
+              }
               setErrors(nextErrors)
               if (Object.keys(nextErrors).length === 0) onNext()
             }}

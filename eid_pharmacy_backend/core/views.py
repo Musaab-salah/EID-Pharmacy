@@ -969,6 +969,8 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Payment account is required for transfer."}, status=400)
             if not transaction_number:
                 return Response({"detail": "Transaction number is required for transfer."}, status=400)
+            if not payment_proof:
+                return Response({"detail": "Payment proof image is required for transfer."}, status=400)
 
         total = Decimal("0.00")
         for i, line in enumerate(lines):
@@ -985,7 +987,17 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
             if batch.branch_id != int(branch_id):
                 return Response({"detail": "Batch branch mismatch."}, status=400)
             if batch.expiry_date < date.today():
-                return Response({"detail": "Expired batch."}, status=400)
+                return Response(
+                    {
+                        "detail": "Expired batch.",
+                        "batch_id": batch.id,
+                        "batch_no": batch.batch_no,
+                        "product_name": batch.product.name_en,
+                        "product_name_ar": batch.product.name_ar,
+                        "expiry_date": str(batch.expiry_date),
+                    },
+                    status=400,
+                )
             if batch.qty_on_hand < qty:
                 return Response({"detail": "Insufficient stock."}, status=400)
 
@@ -1068,10 +1080,18 @@ class InventoryViewSet(viewsets.ViewSet):
     def audit_save(self, request):
         """Save physical stock counts. Body: { audit_type, branch_id, counts: [{ batch_id, physical_qty }] }"""
         audit_type = request.data.get("audit_type", "weekly")
+        if audit_type not in (StockCountLog.DAILY, StockCountLog.WEEKLY, StockCountLog.MONTHLY):
+            return Response({"detail": "Invalid audit_type. Use daily, weekly, or monthly."}, status=400)
         branch_id = request.data.get("branch_id")
         counts = request.data.get("counts", [])
         if not branch_id:
             return Response({"detail": "branch_id required."}, status=400)
+        try:
+            branch_id = int(branch_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "Invalid branch_id."}, status=400)
+        if not Branch.objects.filter(pk=branch_id).exists():
+            return Response({"detail": "Branch not found."}, status=400)
         adjustments = []
         for item in counts:
             batch_id = item.get("batch_id")
@@ -1101,7 +1121,10 @@ class InventoryViewSet(viewsets.ViewSet):
         serializer = InventoryAdjustSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        batch = Batch.objects.select_for_update().get(id=data["batch_id"])
+        try:
+            batch = Batch.objects.select_for_update().get(id=data["batch_id"])
+        except Batch.DoesNotExist:
+            return Response({"detail": "Batch not found."}, status=400)
         qty = data["qty"]
         action = data["action"]
 
@@ -1121,6 +1144,8 @@ class InventoryViewSet(viewsets.ViewSet):
             target_branch_id = data.get("target_branch_id")
             if not target_branch_id:
                 return Response({"detail": "Target branch required."}, status=400)
+            if int(target_branch_id) == int(batch.branch_id):
+                return Response({"detail": "Source and target branch must differ."}, status=400)
             if batch.qty_on_hand < qty:
                 return Response({"detail": "Insufficient stock."}, status=400)
             batch.qty_on_hand -= qty
@@ -1191,9 +1216,17 @@ class InventoryViewSet(viewsets.ViewSet):
         """Apply Excel import. Body: { counts: [{ batch_id, physical_qty }], audit_type, branch_id }."""
         counts = request.data.get("counts", [])
         audit_type = request.data.get("audit_type", "weekly")
+        if audit_type not in (StockCountLog.DAILY, StockCountLog.WEEKLY, StockCountLog.MONTHLY):
+            return Response({"detail": "Invalid audit_type. Use daily, weekly, or monthly."}, status=400)
         branch_id = request.data.get("branch_id")
         if not branch_id:
             return Response({"detail": "branch_id required."}, status=400)
+        try:
+            branch_id = int(branch_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "Invalid branch_id."}, status=400)
+        if not Branch.objects.filter(pk=branch_id).exists():
+            return Response({"detail": "Branch not found."}, status=400)
         adjustments = []
         for item in counts:
             batch_id = item.get("batch_id")

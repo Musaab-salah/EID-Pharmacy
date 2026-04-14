@@ -1,33 +1,23 @@
-# Pharmacy Eid — Django + built React (Admin + POS). Recommended for Render free tier.
+# Production API-only image (SaaS): Django + Gunicorn. Host Admin/POS on Vercel.
+# Build: docker build -t eid-api .
+# Set env at runtime on Render / your orchestrator (DATABASE_URL, SECRET_KEY, etc.).
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY eid_pharmacy_backend/requirements.txt /app/eid_pharmacy_backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/eid_pharmacy_backend/requirements.txt
 
-COPY frontend-admin/package.json frontend-admin/package-lock.json /app/frontend-admin/
-RUN cd /app/frontend-admin && npm ci
-
-COPY frontend-app/package.json frontend-app/package-lock.json /app/frontend-app/
-RUN cd /app/frontend-app && npm ci
-
-COPY . /app
-
-RUN cd /app/frontend-admin && npm run build \
-    && cd /app/frontend-app && npm run build
+COPY eid_pharmacy_backend /app/eid_pharmacy_backend
+COPY gunicorn.conf.py /app/gunicorn.conf.py
 
 ENV DJANGO_SETTINGS_MODULE=eid_pharmacy_backend.settings
+
 RUN cd /app/eid_pharmacy_backend && python manage.py collectstatic --noinput
 
 EXPOSE 10000
-CMD ["sh", "-c", "cd /app/eid_pharmacy_backend && python manage.py migrate --noinput && exec gunicorn eid_pharmacy_backend.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers 2 --timeout 120"]
+CMD ["sh", "-c", "cd /app/eid_pharmacy_backend && python manage.py migrate --noinput && cd /app && exec gunicorn eid_pharmacy_backend.wsgi:application --config gunicorn.conf.py"]

@@ -43,6 +43,10 @@ const PaymentMethod = ({ onBack, onComplete, userInfo }) => {
         setShowProofModal(true)
         return
       }
+      if (!paymentProof) {
+        alert('يرجى إرفاق صورة إشعار التحويل (JPG أو PNG)')
+        return
+      }
     }
 
     setLoading(true)
@@ -143,7 +147,7 @@ const PaymentMethod = ({ onBack, onComplete, userInfo }) => {
                 />
               </div>
               <div>
-                <p className="text-sm text-gray-600 mb-1">صورة إشعار التحويل (اختياري - يمكن رفعها لاحقاً من لوحة الإدارة)</p>
+                <p className="text-sm text-gray-600 mb-1">صورة إشعار التحويل * (JPG أو PNG)</p>
                 <input
                   type="file"
                   accept="image/jpeg,image/png"

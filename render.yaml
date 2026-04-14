@@ -1,6 +1,6 @@
-# Render Blueprint — Pharmacy Eid (Django + React)
-# 1. Push repo to GitHub, then in Render: New → Blueprint → connect repo (select render.yaml)
-# 2. Create a free PostgreSQL first, or add database via Blueprint below.
+# Render Blueprint — API-only (SaaS). Admin + POS on Vercel with VITE_API_URL → this service.
+# Apply: Render Dashboard → New → Blueprint → connect repo.
+# After first deploy, set CORS_ALLOWED_ORIGINS / CSRF_TRUSTED_ORIGINS to your Vercel URLs (Dashboard → Environment).
 
 databases:
   - name: eid-pharmacy-db
@@ -10,7 +10,7 @@ databases:
 
 services:
   - type: web
-    name: eid-pharmacy-web
+    name: eid-pharmacy-api
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
@@ -24,10 +24,18 @@ services:
         value: .onrender.com
       - key: USE_X_FORWARDED_PROTO
         value: "true"
+      - key: SECURE_SSL_REDIRECT
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: eid-pharmacy-db
           property: connectionString
-      # Optional: restrict CORS if you host frontends elsewhere
-      # - key: CORS_ALLOWED_ORIGINS
-      #   value: https://eid-pharmacy-web.onrender.com
+      # Required after you know Vercel URLs (comma-separated, no trailing slash on origins):
+      # https://your-admin.vercel.app,https://your-pos.vercel.app
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      # Neon / Supabase: keep default true; some local Postgres: false
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"

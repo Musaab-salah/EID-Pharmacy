@@ -1,0 +1,21 @@
+# Manual deploy: Repository → Actions → "Deploy hooks" → Run workflow.
+# Requires secret RENDER_DEPLOY_HOOK_URL from Render → Service → Deploy Hook.
+
+name: Deploy hooks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "Add secret RENDER_DEPLOY_HOOK_URL (Render dashboard → Deploy Hook URL)."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK"

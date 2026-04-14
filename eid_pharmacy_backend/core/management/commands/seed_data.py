@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 
 from core.models import Batch, Branch, Category, Customer, Product, User
 
@@ -94,7 +95,7 @@ class Command(BaseCommand):
                 product.price = 10 + idx
                 product.purchase_price = 7 + idx
                 product.save()
-            Batch.objects.get_or_create(
+            batch, _created = Batch.objects.get_or_create(
                 product=product,
                 branch=branch,
                 batch_no=f"BATCH-{idx}",
@@ -104,10 +105,26 @@ class Command(BaseCommand):
                     "unit_cost": product.purchase_price,
                 },
             )
+            # إن كانت الدفعة قديمة من تشغيل سابق، جدّد الصلاحية حتى لا يفشل البيع
+            if batch.expiry_date < date.today():
+                batch.expiry_date = date.today() + timedelta(days=365)
+                if batch.qty_on_hand < 1:
+                    batch.qty_on_hand = 50
+                batch.save(update_fields=["expiry_date", "qty_on_hand"])
 
         Customer.objects.get_or_create(
             name="عميل تجريبي",
             defaults={"phone": "0500000000", "email": "customer@example.com"},
         )
+
+        # دفعات BATCH-* و INIT-* الناتجة عن الإضافة التلقائية: تمديد الصلاحية إن انتهت (بيئة تطوير)
+        for b in (
+            Batch.objects.filter(branch=branch, expiry_date__lt=date.today())
+            .filter(Q(batch_no__startswith="BATCH-") | Q(batch_no__startswith="INIT-"))
+        ):
+            b.expiry_date = date.today() + timedelta(days=365)
+            if b.qty_on_hand < 1:
+                b.qty_on_hand = 50
+            b.save(update_fields=["expiry_date", "qty_on_hand"])
 
         self.stdout.write(self.style.SUCCESS("Seed data created."))

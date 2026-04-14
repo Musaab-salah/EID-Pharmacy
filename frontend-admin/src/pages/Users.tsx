@@ -104,7 +104,14 @@ const Users = () => {
           <Form.Item name="name" label={t('name')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="email" label={t('email')} rules={[{ required: true }]}>
+          <Form.Item
+            name="email"
+            label={t('email')}
+            rules={[
+              { required: true },
+              { type: 'email', message: t('invalid_email') },
+            ]}
+          >
             <Input type="email" />
           </Form.Item>
           <Form.Item name="username" label={t('username')} rules={[{ required: true }]}>
@@ -126,7 +133,14 @@ const Users = () => {
             />
           </Form.Item>
           {!editing && (
-            <Form.Item name="password" label={t('password')} rules={[{ required: true }]}>
+            <Form.Item
+              name="password"
+              label={t('password')}
+              rules={[
+                { required: true },
+                { type: 'string', min: 8, message: t('password_min_8') },
+              ]}
+            >
               <Input.Password />
             </Form.Item>
           )}

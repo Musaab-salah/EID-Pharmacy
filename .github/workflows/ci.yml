@@ -1,0 +1,91 @@
+# CI for EID Pharmacy — backend checks + frontend production builds.
+# Deploy: connect Render + Vercel to this repo for automatic deploys on main,
+# or add secrets RENDER_DEPLOY_HOOK_URL / VERCEL_DEPLOY_HOOK and extend this file.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  # Dummy URL so Vite production build succeeds in CI (replace in real deploy via Vercel env)
+  VITE_API_URL: https://ci-example.invalid/api
+
+jobs:
+  backend:
+    name: Django (check + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: eid_pharmacy_backend
+    env:
+      DEBUG: "True"
+      SECRET_KEY: ci-not-for-production-not-for-production-xxxxx
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: eid_pharmacy_backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Migrations consistent
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run tests
+        run: python manage.py test
+
+  frontend-admin:
+    name: Admin — build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend-admin/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+        env:
+          VERCEL: "1"
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+
+  frontend-app:
+    name: POS — build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend-app/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+        env:
+          VERCEL: "1"
+          VITE_API_URL: ${{ env.VITE_API_URL }}

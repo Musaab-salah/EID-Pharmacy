@@ -1,3 +1,6 @@
+/**
+ * Central API client — JWT from auth storage, base URL from config (VITE_API_URL in production).
+ */
 import axios from 'axios'
 import { getToken, clearToken } from './auth'
 import { API_URL } from './config'
@@ -5,6 +8,7 @@ import { loginHref } from './routerBase'
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 120_000,
 })
 
 api.interceptors.request.use((config) => {

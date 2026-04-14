@@ -121,11 +121,35 @@ const Batches = () => {
           <Form.Item name="expiry_date" label={t('expiry_date')} rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="qty_on_hand" label={t('qty_on_hand')} rules={[{ required: true }]}>
-            <Input type="number" />
+          <Form.Item
+            name="qty_on_hand"
+            label={t('qty_on_hand')}
+            rules={[
+              { required: true },
+              {
+                validator: (_, v) =>
+                  v == null || v === '' || Number(v) >= 0
+                    ? Promise.resolve()
+                    : Promise.reject(t('err_values_positive')),
+              },
+            ]}
+          >
+            <Input type="number" min={0} />
           </Form.Item>
-          <Form.Item name="unit_cost" label={t('unit_cost')} rules={[{ required: true }]}>
-            <Input type="number" />
+          <Form.Item
+            name="unit_cost"
+            label={t('unit_cost')}
+            rules={[
+              { required: true },
+              {
+                validator: (_, v) =>
+                  v == null || v === '' || Number(v) >= 0
+                    ? Promise.resolve()
+                    : Promise.reject(t('err_values_positive')),
+              },
+            ]}
+          >
+            <Input type="number" min={0} step={0.01} />
           </Form.Item>
         </Form>
       </Modal>

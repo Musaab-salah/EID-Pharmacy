@@ -1,57 +1,290 @@
-# Eid Pharmacy (صيدلية عيد)
+# صيدلية عيد — EID Pharmacy
 
-Local-only development setup for a simple pharmacy system with:
-- Backend: Django 4 + DRF + JWT + SQLite
-- Frontend Admin: React + Vite + TypeScript + Ant Design
-- Frontend POS: React + Vite + TypeScript
-- Full Arabic/English support with RTL
+نظام إدارة صيدلية متكامل: **خلفية API** (Django)، **لوحة إدارة** (React)، **نقطة بيع** (POS). دعم **العربية والإنجليزية** واتجاه **RTL**.
 
-## Run Backend (Local)
-1) `cd eid_pharmacy_backend`  
-2) `pip install -r requirements.txt`  
-3) `python manage.py migrate`  
-4) `python manage.py seed_data`  
-5) `python manage.py runserver 8000`
+**English (short):** Pharmacy management stack with Django REST API, JWT auth, SQLite (dev) or Postgres (prod), Admin UI (Ant Design), and POS (Vite + React). See sections below for setup.
 
-API base: `http://localhost:8000/api/`
+---
 
-## Run Admin Portal
-1) `cd frontend-admin`  
-2) `npm install`  
-3) `npm run dev` → `http://localhost:5173/admin`
+## جدول المحتويات
 
-## Run POS Portal
-1) `cd frontend-app`  
-2) `npm install`  
-3) `npm run dev` → `http://localhost:5174/app`
+1. [ماذا يتضمن النظام؟](#ماذا-يتضمن-النظام)
+2. [المتطلبات قبل البدء](#المتطلبات-قبل-البدء)
+3. [استنساخ المشروع](#استنساخ-المشروع)
+4. [إعداد الخلفية (Backend) — خطوة بخطوة](#إعداد-الخلفية-backend--خطوة-بخطوة)
+5. [إعداد ملفات البيئة `.env`](#إعداد-ملفات-البيئة-env)
+6. [تشغيل لوحة الإدارة](#تشغيل-لوحة-الإدارة)
+7. [تشغيل نقطة البيع (POS)](#تشغيل-نقطة-البيع-pos)
+8. [الروابط والمنافذ الافتراضية](#الروابط-والمنافذ-الافتراضية)
+9. [بيانات الدخول الافتراضية](#بيانات-الدخول-الافتراضية)
+10. [البيانات التجريبية (Seed)](#البيانات-التجريبية-seed)
+11. [فهم سريع لطريقة عمل النظام](#فهم-سريع-لطريقة-عمل-النظام)
+12. [واجهة الـ API والمصادقة](#واجهة-الـ-api-والمصادقة)
+13. [النشر للإنتاج](#النشر-للإنتاج)
+14. [مشاكل شائعة](#مشاكل-شائعة)
+15. [وثائق إضافية](#وثائق-إضافية)
+16. [لقطات الشاشة](#لقطات-الشاشة)
+17. [المساهمة](#المساهمة)
+18. [الترخيص](#الترخيص)
 
-## Default Credentials
-- Email: `admin@eidpharmacy.local`
-- Password: `Admin123!`
+---
 
-## Seed Data
-The command `python manage.py seed_data` creates:
-- Main branch: "الفرع الرئيسي - صيدلية عيد"
-- Admin user
-- 5 products
-- 1 customer
-- Batches for products
+## ماذا يتضمن النظام؟
 
-## Assumptions
-- `Batch` is linked to a `Branch` to support per-branch inventory and transfers.
-- Local time zone set to `Asia/Riyadh`.
-- POS uses FEFO: the earliest expiry batch is selected automatically for each product.
-- Thermal receipt printing uses the browser print dialog with 80mm width.
+| المكوّن | التقنية | الوظيفة |
+|--------|---------|---------|
+| **Backend** | Django 4، Django REST Framework، JWT، SQLite أو Postgres | قاعدة البيانات، المنطق، الـ REST API |
+| **لوحة الإدارة** | React، Vite، TypeScript، Ant Design | المنتجات، الدفعات، المشتريات، المخزون، التقارير، المستخدمين، الفروع… |
+| **نقطة البيع** | React، Vite، TypeScript | عملية البيع (سلة → عميل → دفع → فاتورة وطباعة) |
 
-## Documentation
-- **وثائق النظام (عربي)**: [docs/SYSTEM_DOCUMENTATION_AR.md](docs/SYSTEM_DOCUMENTATION_AR.md) — دليل شامل للنظام
-- **التقارير والميزات**: [docs/FEATURES_REPORTS.md](docs/FEATURES_REPORTS.md)
-- **تنبيهات النظام**: [docs/SYSTEM_ALERTS_SPECIFICATION.md](docs/SYSTEM_ALERTS_SPECIFICATION.md)
+**افتراضات مهمة:**
 
-## Production deployment
-- Full runbook: [docs/DEPLOY_PRODUCTION.md](docs/DEPLOY_PRODUCTION.md)
-- Arabic guide: [DEPLOYMENT.md](DEPLOYMENT.md)
+- كل **دفعة مخزون (Batch)** مرتبطة بـ **فرع (Branch)** لدعم المخزون لكل فرع والتحويل بين الفروع.
+- المنطقة الزمنية الافتراضية: `Asia/Riyadh`.
+- في نقطة البيع يُفضَّل بيع الدفعات **FEFO** (الأقرب لانتهاء الصلاحية أولاً).
+- طباعة الإيصال من المتصفح بعرض مناسب لورق حراري تقريباً **80mm** (من إعدادات الطباعة في المتصفح).
 
-## Notes
-- CORS is open for local development.
-- Product images are optional; upload via Admin → Products.
+---
+
+## المتطلبات قبل البدء
+
+- **Python** 3.10+ (يُنصح بـ 3.11 أو 3.12)
+- **Node.js** 18+ و **npm**
+- اتصال بالإنترنت لأول مرة فقط (تثبيت الحزم)
+
+على Windows: يمكن استخدام PowerShell أو CMD. تأكد أن `python` و`pip` و`node` و`npm` تعمل من الطرفية (`python --version`, `node -v`).
+
+---
+
+## استنساخ المشروع
+
+```bash
+git clone <رابط-المستودع>
+cd EID-Pharmacy
+```
+
+(اسم المجلد قد يختلف حسب اسم المستودع.)
+
+---
+
+## إعداد الخلفية (Backend) — خطوة بخطوة
+
+نفّذ الأوامر من مجلد المشروع الجذر، ثم ادخل لمجلد الخلفية:
+
+### 1) الانتقال لمجلد Django
+
+```bash
+cd eid_pharmacy_backend
+```
+
+### 2) بيئة افتراضية (اختياري لكن مُستحسن)
+
+```bash
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+# source .venv/bin/activate
+```
+
+### 3) تثبيت الاعتماديات
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4) تهيئة قاعدة البيانات (ترحيلات Django)
+
+```bash
+python manage.py migrate
+```
+
+### 5) إدخال بيانات تجريبية (اختياري لكن مفيد للتجربة)
+
+```bash
+python manage.py seed_data
+```
+
+### 6) تشغيل الخادم التجريبي
+
+```bash
+python manage.py runserver 8000
+```
+
+اترك هذه النافذة مفتوحة. **قاعدة الـ API:** `http://127.0.0.1:8000/api/`
+
+---
+
+## إعداد ملفات البيئة `.env`
+
+- **الخلفية:** انسخ `eid_pharmacy_backend/.env.example` إلى `eid_pharmacy_backend/.env` وعدّل القيم.
+  - يُحمَّل تلقائياً عبر `python-dotenv` من `settings.py`.
+  - للتطوير المحلي غالباً يكفي `DEBUG=True` و`ALLOWED_HOSTS=localhost,127.0.0.1` دون `DATABASE_URL` ليستخدم **SQLite** (`db.sqlite3`).
+  - للإنتاج مع **Postgres:** عيّن `DATABASE_URL` واطّلع على التعليقات داخل `.env.example`.
+- **الواجهات:** انسخ `frontend-admin/.env.example` و`frontend-app/.env.example` إلى `.env` في كل مجلد إذا أردت تعيين **`VITE_API_URL`** يدوياً (مثلاً عند ربط واجهة مستضافة بخلفية على نطاق آخر). في وضع التطوير غالباً لا حاجة لتغيير شيء؛ الإعداد الافتراضي في `config.ts` يوجّه إلى `http://localhost:8000/api`.
+
+> ملف `.env` الحقيقي **لا يُرفع** إلى Git (مُدرَج في `.gitignore`). الملفات `.env.example` للتوثيق والنسخ.
+
+---
+
+## تشغيل لوحة الإدارة
+
+في **طرفية جديدة** (مع بقاء الخلفية تعمل):
+
+```bash
+cd frontend-admin
+npm install
+npm run dev
+```
+
+- العنوان المحلي: **http://localhost:5173/admin/**
+
+---
+
+## تشغيل نقطة البيع (POS)
+
+في **طرفية ثالثة**:
+
+```bash
+cd frontend-app
+npm install
+npm run dev
+```
+
+- العنوان المحلي: **http://localhost:5174/app/**
+
+---
+
+## الروابط والمنافذ الافتراضية
+
+| الخدمة | الرابط |
+|--------|--------|
+| API | http://127.0.0.1:8000/api/ |
+| لوحة الإدارة | http://localhost:5173/admin/ |
+| نقطة البيع | http://localhost:5174/app/ |
+
+---
+
+## بيانات الدخول الافتراضية
+
+بعد تشغيل `seed_data`:
+
+| الحقل | القيمة |
+|--------|--------|
+| البريد | `admin@eidpharmacy.local` |
+| كلمة المرور | `Admin123!` |
+
+نفس المستخدم يمكنه الدخول للإدارة ولـ POS حسب الصلاحيات المعرّفة في النظام.
+
+---
+
+## البيانات التجريبية (Seed)
+
+الأمر `python manage.py seed_data` ينشئ مثلاً:
+
+- فرعاً رئيسياً (مثل: **الفرع الرئيسي - صيدلية عيد**)
+- مستخدم الإدارة أعلاه
+- عينة منتجات وعميل ودفعات مرتبطة بالفرع
+
+يمكنك تعديل السكربت في `eid_pharmacy_backend/core/management/commands/seed_data.py` لتغيير البيانات الأولية (بحذر في بيئة الإنتاج).
+
+---
+
+## فهم سريع لطريقة عمل النظام
+
+### لوحة الإدارة
+
+- **المنتجات والتصنيفات والموردون:** تعريف الأصناف والأسعار والحد الأدنى للمخزون والصور.
+- **الدفعات (Batches):** كل رصيد مخزون مرتبط بمنتج + فرع + تاريخ انتهاء + رقم دفعة.
+- **فواتير المشتريات:** إدخال شراء يحدّث الدفعات والكميات.
+- **المخزون:** مراجعة فعلية (عدّ يومي/أسبوعي/شهري)، وتعديل/تحويل بين الفروع حسب الصلاحيات.
+- **التقارير:** مبيعات، مشتريات، نقص كمية، قرب انتهاء، وغيرها مع تصدير حيث يتوفر.
+
+### نقطة البيع
+
+1. **المنتجات:** بحث، باركود، تصنيف، إضافة للسلة (مع اختيار الدفعة وفق FEFO حيث ينطبق).
+2. **العميل:** اختياري؛ يمكن البحث بالهاتف.
+3. **الدفع:** نقداً، أو تحويل مع اختيار حساب وإرفاق إثبات عند التحويل (حسب إعدادات النظام).
+4. **الفاتورة:** عرض الملخص و**طباعة** إيصال يتضمن اسم الفرع/الصيدلية ورقم الفاتورة (من المتصفح).
+
+---
+
+## واجهة الـ API والمصادقة
+
+- المصادقة: **JWT** (Bearer Token).
+- مثال للحصول على توكن: `POST /api/auth/token/` مع البريد وكلمة المرور (انظر توثيق الـ API في المشروع).
+- المسارات تبدأ بـ `/api/` (مثل `/api/products/`، `/api/batches/`، `/api/orders/create/` لإنشاء طلب بيع، إلخ).
+
+للتفصيل الكامل للمسارات والتقارير راجع [docs/SYSTEM_DOCUMENTATION_AR.md](docs/SYSTEM_DOCUMENTATION_AR.md).
+
+---
+
+## النشر للإنتاج
+
+- دليل إنجليزي تشغيلي: [docs/DEPLOY_PRODUCTION.md](docs/DEPLOY_PRODUCTION.md)
+- دليل عربي مبسّط: [DEPLOYMENT.md](DEPLOYMENT.md)
+
+في الإنتاج عيّن على الأقل: `SECRET_KEY` قوية، `DEBUG=False`، `ALLOWED_HOSTS`، وقاعدة بيانات مناسبة (`DATABASE_URL` لـ Postgres)، و`CORS_ALLOWED_ORIGINS` لنطاقات الواجهات فقط.
+
+---
+
+## مشاكل شائعة
+
+| المشكلة | ما يمكن فعله |
+|---------|----------------|
+| الواجهة لا تتصل بالـ API | تأكد أن الخلفية تعمل على المنفذ `8000`، وجرب `VITE_API_URL=http://127.0.0.1:8000/api` في `.env` للواجهة. |
+| خطأ CORS في الإنتاج | عيّن `CORS_ALLOWED_ORIGINS` في خلفية Django لروابط الواجهات الفعلية. |
+| `pip install` يفشل | حدّث pip، أو استخدم Python مدعوم (3.10+). |
+| قاعدة بيانات قديمة بعد سحب كود جديد | نفّذ `python manage.py migrate` مجدداً. |
+
+---
+
+## وثائق إضافية
+
+| الملف | المحتوى |
+|------|---------|
+| [docs/SYSTEM_DOCUMENTATION_AR.md](docs/SYSTEM_DOCUMENTATION_AR.md) | شرح مفصّل للوحدات، الشاشات، والـ API |
+| [docs/FEATURES_REPORTS.md](docs/FEATURES_REPORTS.md) | التقارير والميزات |
+| [docs/SYSTEM_ALERTS_SPECIFICATION.md](docs/SYSTEM_ALERTS_SPECIFICATION.md) | تنبيهات النظام |
+| [docs/USER_GUIDE_DETAILED.md](docs/USER_GUIDE_DETAILED.md) | دليل مستخدم تفصيلي (إن وُجد ومحتواه محدث) |
+
+---
+
+## لقطات الشاشة
+
+يُنصح بحفظ الصور في المجلد [`docs/screenshots/`](docs/screenshots/) ثم إدراجها هنا بصيغة Markdown، مثلاً:
+
+```markdown
+![لوحة الإدارة — الرئيسية](docs/screenshots/admin-dashboard.png)
+![نقطة البيع — السلة](docs/screenshots/pos-cart.png)
+```
+
+**أفكار للقطات المفيدة:**
+
+| المنطقة | ما يُوثَّق |
+|---------|------------|
+| لوحة الإدارة | لوحة التحكم، المنتجات، الدفعات، المخزون، تقرير |
+| نقطة البيع | خطوة المنتجات، الدفع، معاينة الفاتورة بعد البيع |
+| عام | تسجيل الدخول، تبديل اللغة إن وُجد |
+
+> المجلد `docs/screenshots/` جاهز في المستودع؛ أضف ملفات PNG أو WebP بحجم معقول (مثلاً عرض 1200px) لتبقى الصفحة سريعة التحميل.
+
+---
+
+## المساهمة
+
+1. **انسخ المستودع (Fork)** أو أنشئ فرعاً جديداً من الفرع الرئيسي.
+2. أنشئ فرعاً للميزة أو الإصلاح، مثلاً: `feature/وصف-قصير` أو `fix/issue-123`.
+3. نفّذ التغييرات مع الحفاظ على أسلوب الكود الحالي (Python / TypeScript) وتقليل التعديلات غير المرتبطة بالمهمة.
+4. جرّب محلياً: `migrate` للخلفية، و`npm run build` للواجهات عند تغيير جوهري.
+5. افتح **Pull Request** مع وصف واضح لما تغيّر ولماذا.
+
+للإبلاغ عن خلل، يُفضّل تضمين: خطوات إعادة الإنتاج، السلوك المتوقع مقابل الفعلي، وإصدار المتصفح/النظام إن كان ذا صلة.
+
+---
+
+## الترخيص
+
+يُوزَّع هذا المشروع تحت **رخصة MIT** — راجع ملف [LICENSE](LICENSE) للنص الكامل.
+
+باختصار: يمكنك استخدام الكود وتعديله وتوزيعه مع الإبقاء على إشعار حقوق النشر ونص الرخصة، **دون ضمان** من المؤلفين. إذا احتجت ترخيصاً مختلفاً (مثلاً للاستخدام الداخلي فقط)، عدّل الملف أو تواصل مع مالك المستودع.

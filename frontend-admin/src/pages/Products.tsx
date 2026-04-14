@@ -1,10 +1,11 @@
-import { Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
-import { UploadOutlined } from '@ant-design/icons'
+import { Button, Form, Input, Modal, Select, Space, Table, Typography, message } from 'antd'
+import { QrcodeOutlined, UploadOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../api'
 import { API_BASE } from '../config'
 import PageObjective from '../components/PageObjective'
+import BarcodeScanModal from '../components/admin/BarcodeScanModal'
 import ImportExcelModal from '../components/admin/ImportExcelModal'
 import { exportToPdf, printTable } from '../utils/exportUtils'
 
@@ -44,6 +45,7 @@ const Products = () => {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [supplierModalOpen, setSupplierModalOpen] = useState(false)
   const [importExcelOpen, setImportExcelOpen] = useState(false)
+  const [barcodeScanOpen, setBarcodeScanOpen] = useState(false)
   const [form] = Form.useForm<Product>()
   const [supplierForm] = Form.useForm<{ name_en: string; name_ar: string; phone: string; address: string }>()
 
@@ -131,6 +133,17 @@ const Products = () => {
     load()
   }
 
+  const applyScannedBarcode = (code: string) => {
+    form.setFieldValue('barcode', code)
+    const found = items.find(
+      (p) => String(p.barcode || '').trim() === code || String(p.sku || '').trim() === code,
+    )
+    if (found && (!editing || found.id !== editing.id)) {
+      const label = i18n.language === 'ar' ? found.name_ar : found.name_en
+      message.warning(`${t('product_duplicate_barcode')}: ${label}`)
+    }
+  }
+
   const handlePrint = () => {
     const headers = [
       t('name_en'),
@@ -206,6 +219,11 @@ const Products = () => {
         open={importExcelOpen}
         onClose={() => setImportExcelOpen(false)}
         onSuccess={load}
+      />
+      <BarcodeScanModal
+        open={barcodeScanOpen}
+        onClose={() => setBarcodeScanOpen(false)}
+        onScan={applyScannedBarcode}
       />
       <Table
         rowKey="id"
@@ -427,25 +445,66 @@ const Products = () => {
             <Input placeholder={t('place_of_manufacture_placeholder')} />
           </Form.Item>
           <Form.Item name="barcode" label={t('barcode')}>
-            <Input />
+            <Input
+              placeholder={t('barcode_scan_placeholder')}
+              addonAfter={
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<QrcodeOutlined />}
+                  onClick={() => setBarcodeScanOpen(true)}
+                  style={{ padding: '0 8px' }}
+                >
+                  {t('scan_barcode')}
+                </Button>
+              }
+            />
           </Form.Item>
           <Form.Item name="sku" label={t('sku')}>
             <Input />
           </Form.Item>
-          <Form.Item name="price" label={t('price')} rules={[{ required: true }]}>
-            <Input type="number" />
+          <Form.Item
+            name="price"
+            label={t('price')}
+            rules={[
+              { required: true, message: t('err_values_positive') },
+              {
+                validator: (_, v) =>
+                  v == null || v === '' || Number(v) >= 0
+                    ? Promise.resolve()
+                    : Promise.reject(t('err_values_positive')),
+              },
+            ]}
+          >
+            <Input type="number" min={0} step={0.01} />
           </Form.Item>
           <Form.Item
             name="purchase_price"
             label={t('purchase_price')}
-            rules={[{ required: true }]}
+            rules={[
+              { required: true },
+              {
+                validator: (_, v) =>
+                  v == null || v === '' || Number(v) >= 0
+                    ? Promise.resolve()
+                    : Promise.reject(t('err_values_positive')),
+              },
+            ]}
           >
-            <Input type="number" />
+            <Input type="number" min={0} step={0.01} />
           </Form.Item>
           <Form.Item
             name="min_quantity"
             label={t('min_quantity')}
             initialValue={0}
+            rules={[
+              {
+                validator: (_, v) =>
+                  v == null || v === '' || Number(v) >= 0
+                    ? Promise.resolve()
+                    : Promise.reject(t('err_values_positive')),
+              },
+            ]}
           >
             <Input type="number" min={0} placeholder={t('min_quantity_help')} />
           </Form.Item>

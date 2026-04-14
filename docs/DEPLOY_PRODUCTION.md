@@ -1,5 +1,7 @@
 # Pharmacy Eid — Production deployment runbook
 
+**SaaS split (Render API + Vercel Admin/POS):** see **[SAAS_DEPLOYMENT.md](SAAS_DEPLOYMENT.md)**.
+
 ## 1. What this project is
 
 | Layer | Stack | Entry point |
