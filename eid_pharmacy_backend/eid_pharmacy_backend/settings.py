@@ -216,6 +216,9 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
+# E-Invoicing provider selector (placeholder until country-specific provider is configured)
+E_INVOICE_PROVIDER = os.environ.get("E_INVOICE_PROVIDER", "dummy")
+
 # CORS — production must list Vercel (and any) frontend origins explicitly
 _cors = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
 if _cors:

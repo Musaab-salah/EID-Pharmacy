@@ -2,14 +2,19 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.conf import settings
 from django.db.models import F, Sum
 from django.db.models.functions import Coalesce
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db.models import Q
 
+from .permissions import IsAdminOrReadOnly, RolePermission
+from .scoping import BranchScopedQuerysetMixin
 from .models import (
+    AuditLog,
     Batch,
     BatchImport,
     Branch,
@@ -18,18 +23,39 @@ from .models import (
     Notification,
     PaymentAccount,
     Product,
+    ProductBarcode,
     ProductConflict,
     PurchaseDueDate,
     PurchaseInvoice,
     PurchaseLine,
     SaleInvoice,
     SaleLine,
+    CashierShift,
+    StockTransfer,
+    StockTransferLine,
     StockCountLog,
     Supplier,
     User,
     UserSession,
+    SaleReturn,
+    SaleReturnLine,
+    EInvoiceSubmission,
 )
 from .utils import normalize_product_identity, to_canonical_qty
+from .einvoice import get_provider
+
+
+def _audit(entity: str, entity_id: int, action: str, before=None, after=None):
+    try:
+        AuditLog.objects.create(
+            entity=entity,
+            entity_id=int(entity_id),
+            action=action,
+            before=before,
+            after=after,
+        )
+    except Exception:
+        pass
 def _client_date(request):
     """Get client's local date from X-Client-Date header, fallback to server today."""
     h = request.META.get("HTTP_X_CLIENT_DATE")
@@ -55,31 +81,44 @@ from .serializers import (
     SaleLineSerializer,
     SupplierSerializer,
     UserSerializer,
+    StockTransferSerializer,
+    CashierShiftSerializer,
+    OpenShiftSerializer,
+    CloseShiftSerializer,
+    SaleReturnSerializer,
+    AuditLogSerializer,
 )
 
 
 class BranchViewSet(viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+    write_roles = {User.ROLE_ADMIN}
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by("id")
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
 
 class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all().order_by("id")
     serializer_class = SupplierSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("id")
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN}
 
     @action(detail=False, methods=["get"])
     def me(self, request):
@@ -87,18 +126,12 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(BranchScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Product.objects.prefetch_related("branches").all().order_by("id")
     serializer_class = ProductSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        # Admin sees all products; others see only products in their branch
-        if user.role != User.ROLE_ADMIN and user.branch_id:
-            qs = qs.filter(branches__id=user.branch_id).distinct()
-        return qs
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     def _prepare_data(self, request):
         """Ensure branches is a list when sent as JSON string (e.g. from FormData)."""
@@ -118,16 +151,23 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=self._prepare_data(request))
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        _audit("Product", serializer.instance.id, "create", before=None, after=serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        before = None
+        try:
+            before = ProductSerializer(instance).data
+        except Exception:
+            before = None
         serializer = self.get_serializer(
             instance, data=self._prepare_data(request), partial=partial
         )
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+        _audit("Product", instance.id, "update", before=before, after=serializer.data)
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"], url_path="low-stock")
@@ -373,7 +413,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         code = request.query_params.get("code") or request.query_params.get("barcode")
         if not code:
             return Response({"detail": "Barcode required."}, status=400)
-        product = Product.objects.filter(barcode__iexact=code.strip()).first()
+        term = code.strip()
+        product = (
+            Product.objects.filter(Q(barcode__iexact=term) | Q(sku__iexact=term))
+            .first()
+        )
+        if not product:
+            pb = ProductBarcode.objects.select_related("product").filter(
+                code__iexact=term
+            ).first()
+            product = pb.product if pb else None
         if not product:
             return Response({"detail": "Product not found."}, status=404)
         batches = list(
@@ -863,13 +912,19 @@ class BatchImportViewSet(viewsets.ViewSet):
 class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.select_related("product", "branch").all().order_by("id")
     serializer_class = BatchSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user.branch_id:
-            qs = qs.filter(branch_id=user.branch_id)
+        if user.role != User.ROLE_ADMIN:
+            branch_ids = list(user.branches.values_list("id", flat=True)) or (
+                [user.branch_id] if user.branch_id else []
+            )
+            if branch_ids:
+                qs = qs.filter(branch_id__in=branch_ids)
         return qs
 
     @action(detail=False, methods=["get"])
@@ -889,7 +944,9 @@ class BatchViewSet(viewsets.ModelViewSet):
 class PaymentAccountViewSet(viewsets.ModelViewSet):
     queryset = PaymentAccount.objects.all().order_by("id")
     serializer_class = PaymentAccountSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     @action(detail=False, methods=["get"], url_path="active")
     def active_list(self, request):
@@ -901,7 +958,9 @@ class PaymentAccountViewSet(viewsets.ModelViewSet):
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by("id")
     serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     @action(detail=False, methods=["get"], url_path="lookup")
     def lookup(self, request):
@@ -917,13 +976,28 @@ class CustomerViewSet(viewsets.ModelViewSet):
 class SaleLineViewSet(viewsets.ModelViewSet):
     queryset = SaleLine.objects.select_related("invoice", "product", "batch").all()
     serializer_class = SaleLineSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
 
 class SaleInvoiceViewSet(viewsets.ModelViewSet):
     queryset = SaleInvoice.objects.select_related("branch", "customer", "cashier").all()
     serializer_class = SaleInvoiceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role != User.ROLE_ADMIN:
+            branch_ids = list(user.branches.values_list("id", flat=True)) or (
+                [user.branch_id] if user.branch_id else []
+            )
+            if branch_ids:
+                qs = qs.filter(branch_id__in=branch_ids)
+        return qs
 
     def partial_update(self, request, *args, **kwargs):
         """Allow admin to upload payment_proof for transfer sales."""
@@ -1008,6 +1082,10 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
             total += line_total
 
         discount = Decimal(str(payload.get("discount", 0)))
+        if discount > 0 and request.user.role == User.ROLE_CASHIER:
+            max_disc = (total * Decimal("0.10")).quantize(Decimal("0.01"))
+            if discount > max_disc:
+                return Response({"detail": "Discount exceeds cashier limit (10%)."}, status=403)
         tax = Decimal(str(payload.get("tax", 0)))
         grand_total = total - discount + tax
         payload["total"] = total
@@ -1024,14 +1102,51 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        invoice = serializer.save()
+        invoice = serializer.save(
+            shift=self._resolve_shift(branch_id=branch_id, cashier_id=cashier_id)
+        )
 
         for line in invoice.lines.all():
             Batch.objects.filter(id=line.batch_id).update(
                 qty_on_hand=F("qty_on_hand") - line.qty
             )
+        _audit("SaleInvoice", invoice.id, "create", before=None, after=SaleInvoiceSerializer(invoice).data)
+
+        # E-invoicing submission (dummy provider until a country-specific provider is configured)
+        try:
+            provider_name = getattr(settings, "E_INVOICE_PROVIDER", "dummy")
+            provider = get_provider(provider_name)
+            payload_e = provider.generate_payload(invoice)
+            res_e = provider.submit(payload_e)
+            from django.utils import timezone
+            EInvoiceSubmission.objects.update_or_create(
+                invoice=invoice,
+                defaults={
+                    "provider": provider.name,
+                    "status": "submitted" if res_e.status == "submitted" else "failed",
+                    "uuid": res_e.uuid or "",
+                    "qr_text": res_e.qr_text or "",
+                    "payload": res_e.payload,
+                    "response": res_e.response,
+                    "error": res_e.error or "",
+                    "submitted_at": timezone.now() if res_e.status == "submitted" else None,
+                },
+            )
+        except Exception:
+            # Don't block sales if e-invoicing fails; track later via logs if needed.
+            pass
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def _resolve_shift(self, branch_id: int, cashier_id: int):
+        try:
+            return CashierShift.objects.filter(
+                branch_id=branch_id,
+                cashier_id=cashier_id,
+                closed_at__isnull=True,
+            ).order_by("-opened_at").first()
+        except Exception:
+            return None
 
     @action(detail=False, methods=["get"])
     def today(self, request):
@@ -1044,7 +1159,9 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
 
 
 class InventoryViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     @action(detail=False, methods=["get"], url_path="audit/batches")
     def audit_batches(self, request):
@@ -1125,12 +1242,20 @@ class InventoryViewSet(viewsets.ViewSet):
             batch = Batch.objects.select_for_update().get(id=data["batch_id"])
         except Batch.DoesNotExist:
             return Response({"detail": "Batch not found."}, status=400)
+        before_qty = batch.qty_on_hand
         qty = data["qty"]
         action = data["action"]
 
         if action == "add":
             batch.qty_on_hand += qty
             batch.save()
+            _audit(
+                "Batch",
+                batch.id,
+                "inventory_add",
+                before={"qty_on_hand": before_qty},
+                after={"qty_on_hand": batch.qty_on_hand, "qty": qty, "actor_id": request.user.id},
+            )
             return Response({"detail": "Stock added."})
 
         if action == "subtract":
@@ -1138,6 +1263,13 @@ class InventoryViewSet(viewsets.ViewSet):
                 return Response({"detail": "Insufficient stock."}, status=400)
             batch.qty_on_hand -= qty
             batch.save()
+            _audit(
+                "Batch",
+                batch.id,
+                "inventory_subtract",
+                before={"qty_on_hand": before_qty},
+                after={"qty_on_hand": batch.qty_on_hand, "qty": qty, "actor_id": request.user.id},
+            )
             return Response({"detail": "Stock subtracted."})
 
         if action == "transfer":
@@ -1157,6 +1289,18 @@ class InventoryViewSet(viewsets.ViewSet):
                 expiry_date=batch.expiry_date,
                 qty_on_hand=qty,
                 unit_cost=batch.unit_cost,
+            )
+            _audit(
+                "Batch",
+                batch.id,
+                "inventory_transfer",
+                before={"qty_on_hand": before_qty},
+                after={
+                    "qty_on_hand": batch.qty_on_hand,
+                    "qty": qty,
+                    "target_branch_id": int(target_branch_id),
+                    "actor_id": request.user.id,
+                },
             )
             return Response({"detail": "Stock transferred."})
 
@@ -1256,10 +1400,19 @@ class PurchaseInvoiceViewSet(viewsets.ModelViewSet):
         "lines__product", "due_dates"
     ).order_by("-purchase_date", "-id")
     serializer_class = PurchaseInvoiceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     def get_queryset(self):
         qs = super().get_queryset()
+        user = self.request.user
+        if user.role != User.ROLE_ADMIN:
+            branch_ids = list(user.branches.values_list("id", flat=True)) or (
+                [user.branch_id] if user.branch_id else []
+            )
+            if branch_ids:
+                qs = qs.filter(branch_id__in=branch_ids)
         if self.action != "list":
             return qs
         date_from = self.request.query_params.get("date_from")
@@ -1275,7 +1428,7 @@ class PurchaseInvoiceViewSet(viewsets.ModelViewSet):
             qs = qs.filter(supplier_id=supplier_id)
         if product_id:
             qs = qs.filter(lines__product_id=product_id).distinct()
-        if branch_id:
+        if branch_id and user.role == User.ROLE_ADMIN:
             qs = qs.filter(branch_id=branch_id)
         return qs
 
@@ -1410,7 +1563,9 @@ class NotificationViewSet(viewsets.ViewSet):
 
 
 class ReportViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
 
     @action(detail=False, methods=["get"])
     def purchases(self, request):
@@ -1769,3 +1924,391 @@ class ReportViewSet(viewsets.ViewSet):
             for dd in qs
         ]
         return Response(data)
+
+    @action(detail=False, methods=["get"], url_path="transfers")
+    def transfers_report(self, request):
+        """Stock transfers report with filters: date_from, date_to, from_branch_id, to_branch_id, status."""
+        qs = StockTransfer.objects.select_related("from_branch", "to_branch", "created_by").prefetch_related("lines").order_by("-id")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        from_branch_id = request.query_params.get("from_branch_id")
+        to_branch_id = request.query_params.get("to_branch_id")
+        status_f = request.query_params.get("status")
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+        if from_branch_id:
+            qs = qs.filter(from_branch_id=from_branch_id)
+        if to_branch_id:
+            qs = qs.filter(to_branch_id=to_branch_id)
+        if status_f:
+            qs = qs.filter(status=status_f)
+
+        data = []
+        for t in qs:
+            total_qty = sum(int(l.qty) for l in t.lines.all())
+            data.append({
+                "id": t.id,
+                "from_branch": t.from_branch.name_en,
+                "to_branch": t.to_branch.name_en,
+                "status": t.status,
+                "created_at": t.created_at.isoformat(),
+                "total_qty": total_qty,
+                "lines_count": t.lines.count(),
+            })
+        return Response(data)
+
+    @action(detail=False, methods=["get"], url_path="stock-ledger")
+    def stock_ledger(self, request):
+        """Lightweight stock movement ledger based on AuditLog inventory events."""
+        branch_id = request.query_params.get("branch_id")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        qs = AuditLog.objects.filter(entity="Batch", action__startswith="inventory_").order_by("-created_at")
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+        if branch_id:
+            qs = qs.filter(after__branch_id=int(branch_id))
+        qs = qs[:500]
+        return Response(AuditLogSerializer(qs, many=True).data)
+
+
+class StockTransferViewSet(viewsets.ModelViewSet):
+    queryset = (
+        StockTransfer.objects.select_related(
+            "from_branch", "to_branch", "created_by", "approved_by"
+        )
+        .prefetch_related("lines__product", "lines__source_batch")
+        .all()
+        .order_by("-id")
+    )
+    serializer_class = StockTransferSerializer
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role != User.ROLE_ADMIN:
+            branch_ids = list(user.branches.values_list("id", flat=True)) or (
+                [user.branch_id] if user.branch_id else []
+            )
+            if branch_ids:
+                qs = qs.filter(Q(from_branch_id__in=branch_ids) | Q(to_branch_id__in=branch_ids))
+        return qs
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        payload = request.data.copy()
+        lines_in = payload.get("lines") or []
+        if isinstance(lines_in, str):
+            import json
+
+            lines_in = json.loads(lines_in)
+        payload["lines"] = lines_in
+        serializer = self.get_serializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+
+        from_branch_id = serializer.validated_data["from_branch"].id
+        to_branch_id = serializer.validated_data["to_branch"].id
+        if from_branch_id == to_branch_id:
+            return Response({"detail": "from_branch and to_branch must differ."}, status=400)
+
+        user = request.user
+        if user.role != User.ROLE_ADMIN:
+            allowed = list(user.branches.values_list("id", flat=True)) or (
+                [user.branch_id] if user.branch_id else []
+            )
+            if allowed and from_branch_id not in allowed:
+                return Response({"detail": "You can only create transfers from your allowed branches."}, status=403)
+
+        transfer = StockTransfer.objects.create(
+            from_branch_id=from_branch_id,
+            to_branch_id=to_branch_id,
+            created_by=user,
+            notes=(payload.get("notes") or "").strip(),
+            status=StockTransfer.STATUS_DRAFT,
+        )
+
+        for line in serializer.validated_data["lines"]:
+            batch_id = line["source_batch"]
+            qty = int(line["qty"])
+            batch = Batch.objects.select_for_update().select_related("product").get(id=batch_id)
+            if batch.branch_id != from_branch_id:
+                transaction.set_rollback(True)
+                return Response({"detail": "Source batch branch mismatch."}, status=400)
+            if batch.expiry_date < date.today():
+                transaction.set_rollback(True)
+                return Response({"detail": "Cannot transfer expired batch."}, status=400)
+            if qty <= 0:
+                transaction.set_rollback(True)
+                return Response({"detail": "Invalid qty."}, status=400)
+            if batch.qty_on_hand < qty:
+                transaction.set_rollback(True)
+                return Response({"detail": "Insufficient stock for transfer."}, status=400)
+            StockTransferLine.objects.create(
+                transfer=transfer,
+                product=batch.product,
+                source_batch=batch,
+                qty=qty,
+                batch_no=batch.batch_no,
+                expiry_date=batch.expiry_date,
+                unit_cost=batch.unit_cost,
+            )
+
+        out = StockTransferSerializer(transfer)
+        return Response(out.data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="approve")
+    @transaction.atomic
+    def approve(self, request, pk=None):
+        from django.utils import timezone
+
+        t = self.get_object()
+        if t.status != StockTransfer.STATUS_DRAFT:
+            return Response({"detail": "Only draft transfers can be approved."}, status=400)
+        t.status = StockTransfer.STATUS_APPROVED
+        t.approved_by = request.user
+        t.approved_at = timezone.now()
+        t.save()
+        _audit("StockTransfer", t.id, "approve", before=None, after=StockTransferSerializer(t).data)
+        return Response(StockTransferSerializer(t).data)
+
+    @action(detail=True, methods=["post"], url_path="send")
+    @transaction.atomic
+    def send(self, request, pk=None):
+        from django.utils import timezone
+
+        t = self.get_object()
+        if t.status not in (StockTransfer.STATUS_APPROVED, StockTransfer.STATUS_DRAFT):
+            return Response({"detail": "Only draft/approved transfers can be sent."}, status=400)
+
+        for line in t.lines.select_related("source_batch"):
+            b = Batch.objects.select_for_update().get(id=line.source_batch_id)
+            if b.branch_id != t.from_branch_id:
+                return Response({"detail": "Source batch branch mismatch."}, status=400)
+            if b.qty_on_hand < line.qty:
+                return Response({"detail": "Insufficient stock to send transfer."}, status=400)
+            Batch.objects.filter(id=b.id).update(qty_on_hand=F("qty_on_hand") - line.qty)
+
+        t.status = StockTransfer.STATUS_SENT
+        t.sent_at = timezone.now()
+        t.save()
+        _audit("StockTransfer", t.id, "send", before=None, after=StockTransferSerializer(t).data)
+        return Response(StockTransferSerializer(t).data)
+
+    @action(detail=True, methods=["post"], url_path="receive")
+    @transaction.atomic
+    def receive(self, request, pk=None):
+        from django.utils import timezone
+
+        t = self.get_object()
+        if t.status != StockTransfer.STATUS_SENT:
+            return Response({"detail": "Only sent transfers can be received."}, status=400)
+
+        for line in t.lines.all():
+            existing = Batch.objects.select_for_update().filter(
+                product_id=line.product_id,
+                branch_id=t.to_branch_id,
+                batch_no=line.batch_no,
+                expiry_date=line.expiry_date,
+                unit_cost=line.unit_cost,
+            ).first()
+            if existing:
+                existing.qty_on_hand += line.qty
+                existing.save()
+            else:
+                Batch.objects.create(
+                    product_id=line.product_id,
+                    branch_id=t.to_branch_id,
+                    batch_no=line.batch_no,
+                    expiry_date=line.expiry_date,
+                    qty_on_hand=line.qty,
+                    unit=Batch.UNIT_PILL,
+                    unit_cost=line.unit_cost,
+                )
+
+        t.status = StockTransfer.STATUS_RECEIVED
+        t.received_at = timezone.now()
+        t.save()
+        _audit("StockTransfer", t.id, "receive", before=None, after=StockTransferSerializer(t).data)
+        return Response(StockTransferSerializer(t).data)
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    @transaction.atomic
+    def cancel(self, request, pk=None):
+        t = self.get_object()
+        if t.status in (StockTransfer.STATUS_RECEIVED, StockTransfer.STATUS_CANCELLED):
+            return Response({"detail": "Transfer cannot be cancelled."}, status=400)
+        t.status = StockTransfer.STATUS_CANCELLED
+        t.save()
+        _audit("StockTransfer", t.id, "cancel", before=None, after=StockTransferSerializer(t).data)
+        return Response(StockTransferSerializer(t).data)
+
+
+class CashierShiftViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+
+    def list(self, request):
+        qs = CashierShift.objects.select_related("branch", "cashier").order_by("-opened_at")[:200]
+        user = request.user
+        if user.role != User.ROLE_ADMIN:
+            qs = qs.filter(cashier=user)
+        return Response(CashierShiftSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="current")
+    def current(self, request):
+        user = request.user
+        qs = CashierShift.objects.select_related("branch", "cashier").filter(
+            cashier=user, closed_at__isnull=True
+        ).order_by("-opened_at")
+        shift = qs.first()
+        if not shift:
+            return Response({"open": False, "shift": None})
+        return Response({"open": True, "shift": CashierShiftSerializer(shift).data})
+
+    @action(detail=False, methods=["post"], url_path="open")
+    @transaction.atomic
+    def open_shift(self, request):
+        s = OpenShiftSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        branch_id = s.validated_data["branch"]
+        opening_cash = s.validated_data.get("opening_cash") or 0
+        user = request.user
+        if user.role != User.ROLE_ADMIN:
+            allowed = list(user.branches.values_list("id", flat=True)) or (
+                [user.branch_id] if user.branch_id else []
+            )
+            if allowed and branch_id not in allowed:
+                return Response({"detail": "Branch not allowed."}, status=403)
+        if CashierShift.objects.filter(cashier=user, closed_at__isnull=True).exists():
+            return Response({"detail": "There is already an open shift."}, status=400)
+        shift = CashierShift.objects.create(
+            branch_id=branch_id,
+            cashier=user,
+            opening_cash=opening_cash,
+        )
+        return Response(CashierShiftSerializer(shift).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="close")
+    @transaction.atomic
+    def close_shift(self, request, pk=None):
+        from django.utils import timezone
+        from decimal import Decimal
+
+        shift = CashierShift.objects.select_for_update().get(id=pk)
+        user = request.user
+        if user.role != User.ROLE_ADMIN and shift.cashier_id != user.id:
+            return Response({"detail": "Not allowed."}, status=403)
+        if shift.closed_at is not None:
+            return Response({"detail": "Shift already closed."}, status=400)
+        s = CloseShiftSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        closing_cash = s.validated_data["closing_cash"]
+
+        expected_cash = (
+            SaleInvoice.objects.filter(shift=shift, payment_method=SaleInvoice.PAYMENT_CASH)
+            .aggregate(total=Sum("grand_total"))["total"]
+            or Decimal("0")
+        )
+        expected = Decimal(str(shift.opening_cash)) + Decimal(str(expected_cash))
+        variance = Decimal(str(closing_cash)) - expected
+
+        shift.closing_cash = closing_cash
+        shift.variance = variance
+        shift.closed_at = timezone.now()
+        shift.save()
+        return Response(CashierShiftSerializer(shift).data)
+
+
+class SaleReturnViewSet(viewsets.ModelViewSet):
+    queryset = (
+        SaleReturn.objects.select_related("original_invoice", "branch", "cashier")
+        .prefetch_related("lines__product", "lines__batch", "lines__sale_line")
+        .order_by("-id")
+    )
+    serializer_class = SaleReturnSerializer
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST, User.ROLE_CASHIER}
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role != User.ROLE_ADMIN and user.branch_id:
+            qs = qs.filter(branch_id=user.branch_id)
+        return qs
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        payload = request.data.copy()
+        lines_in = payload.get("lines") or []
+        if isinstance(lines_in, str):
+            import json
+
+            lines_in = json.loads(lines_in)
+        payload["lines"] = lines_in
+
+        serializer = self.get_serializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        invoice: SaleInvoice = serializer.validated_data["original_invoice"]
+
+        user = request.user
+        if user.role != User.ROLE_ADMIN and user.branch_id and invoice.branch_id != user.branch_id:
+            return Response({"detail": "Invoice branch mismatch."}, status=403)
+
+        ret = SaleReturn.objects.create(
+            original_invoice=invoice,
+            branch=invoice.branch,
+            cashier=user,
+            reason=(payload.get("reason") or "").strip(),
+        )
+
+        for line in serializer.validated_data["lines"]:
+            sale_line_id = line["sale_line"]
+            qty = int(line["qty"])
+            sale_line = (
+                SaleLine.objects.select_for_update()
+                .select_related("batch", "product", "invoice")
+                .filter(id=sale_line_id, invoice=invoice)
+                .first()
+            )
+            if not sale_line:
+                transaction.set_rollback(True)
+                return Response({"detail": "Sale line not found for invoice."}, status=400)
+            if qty <= 0 or qty > sale_line.qty:
+                transaction.set_rollback(True)
+                return Response({"detail": "Invalid return qty."}, status=400)
+
+            # Add stock back to the original batch
+            Batch.objects.filter(id=sale_line.batch_id).update(qty_on_hand=F("qty_on_hand") + qty)
+
+            unit_price = sale_line.unit_price
+            line_total = unit_price * qty
+            SaleReturnLine.objects.create(
+                sale_return=ret,
+                sale_line=sale_line,
+                product=sale_line.product,
+                batch=sale_line.batch,
+                qty=qty,
+                unit_price=unit_price,
+                line_total=line_total,
+            )
+
+        out = SaleReturnSerializer(ret)
+        _audit("SaleReturn", ret.id, "create", before=None, after=out.data)
+        return Response(out.data, status=201)
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AuditLog.objects.all().order_by("-created_at")
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated, RolePermission]
+    allowed_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}
+    write_roles = {User.ROLE_ADMIN, User.ROLE_PHARMACIST}

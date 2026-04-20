@@ -147,7 +147,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
         </div>
       }
       width={420}
-      destroyOnClose
+      destroyOnHidden
     >
       <p style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>{t('scan_barcode_hint')}</p>
       <div

@@ -8,6 +8,7 @@ import PageObjective from '../components/PageObjective'
 import BarcodeScanModal from '../components/admin/BarcodeScanModal'
 import ImportExcelModal from '../components/admin/ImportExcelModal'
 import { exportToPdf, printTable } from '../utils/exportUtils'
+import { printBarcodeLabels } from '../utils/labelPrint'
 
 type Product = {
   id: number
@@ -21,6 +22,8 @@ type Product = {
   supplier_name_ar?: string
   branches?: number[]
   barcode: string
+  barcodes?: string[]
+  barcode_list?: string[]
   sku: string
   price: number
   purchase_price: number
@@ -81,12 +84,17 @@ const Products = () => {
     try {
       const payload = { ...values }
       const branchesArr = payload.branches ?? []
+      const barcodeList = (payload.barcodes ?? [])
+        .map((x) => String(x).trim())
+        .filter(Boolean)
       const appendPayload = (fd: FormData, p: Record<string, unknown>) => {
         Object.entries(p).forEach(([k, v]) => {
           if (k === 'branches') return
+          if (k === 'barcodes') return
           if (v != null && v !== '' && v !== undefined) fd.append(k, String(v))
         })
         fd.append('branches', JSON.stringify(branchesArr))
+        fd.append('barcode_list', JSON.stringify(barcodeList))
       }
       if (imageFile) {
         const formData = new FormData()
@@ -98,6 +106,8 @@ const Products = () => {
           await api.post('/products/', formData)
         }
       } else {
+        ;(payload as any).barcode_list = barcodeList
+        delete (payload as any).barcodes
         if (editing) {
           await api.patch(`/products/${editing.id}/`, payload)
         } else {
@@ -122,6 +132,7 @@ const Products = () => {
     form.setFieldsValue({
       ...record,
       branches: record.branches ?? [],
+      barcodes: record.barcodes ?? (record.barcode ? [record.barcode] : []),
       product_type: record.product_type ?? 'default',
       strips_per_box: record.strips_per_box ?? 1,
       pills_per_strip: record.pills_per_strip ?? 1,
@@ -131,6 +142,37 @@ const Products = () => {
   const handleDelete = async (record: Product) => {
     await api.delete(`/products/${record.id}/`)
     load()
+  }
+
+  const handlePrintLabels = (record: Product) => {
+    const code = String(record.barcode || record.barcodes?.[0] || '').trim()
+    if (!code) {
+      message.warning(t('barcode_scan_placeholder'))
+      return
+    }
+    let qty = 12
+    Modal.confirm({
+      title: t('print'),
+      content: (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{t('min_quantity')}</span>
+          <Input
+            type="number"
+            min={1}
+            defaultValue={qty}
+            onChange={(e) => {
+              qty = Number(e.target.value || 1)
+            }}
+            style={{ width: 120 }}
+          />
+        </div>
+      ),
+      okText: t('print'),
+      onOk: () => {
+        const name = i18n.language === 'ar' ? record.name_ar : record.name_en
+        printBarcodeLabels({ name, code, price: record.price }, qty)
+      },
+    })
   }
 
   const applyScannedBarcode = (code: string) => {
@@ -236,7 +278,11 @@ const Products = () => {
             render: (v: string) =>
               v ? (
                 <img
-                  src={`${API_BASE}${v.startsWith('/') ? '' : '/media/'}${v}`}
+                  src={
+                    String(v).startsWith('http')
+                      ? v
+                      : `${API_BASE}${String(v).startsWith('/') ? '' : '/media/'}${v}`
+                  }
                   alt=""
                   style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }}
                 />
@@ -262,6 +308,14 @@ const Products = () => {
           },
           { title: t('place_of_manufacture'), dataIndex: 'place_of_manufacture', render: (v) => v || '-' },
           { title: t('barcode'), dataIndex: 'barcode' },
+          {
+            title: t('barcode'),
+            dataIndex: 'barcodes',
+            render: (_v: unknown, r: Product) => {
+              const codes = r.barcodes ?? (r.barcode ? [r.barcode] : [])
+              return codes.length ? codes.join(', ') : '—'
+            },
+          },
           { title: t('sku'), dataIndex: 'sku' },
           { title: t('price'), dataIndex: 'price' },
           { title: t('purchase_price'), dataIndex: 'purchase_price' },
@@ -270,6 +324,7 @@ const Products = () => {
             render: (_, record) => (
               <Space>
                 <Button onClick={() => handleEdit(record)}>{t('edit')}</Button>
+                <Button onClick={() => handlePrintLabels(record)}>{t('print')}</Button>
                 <Button danger onClick={() => handleDelete(record)}>
                   {t('delete')}
                 </Button>
@@ -445,19 +500,19 @@ const Products = () => {
             <Input placeholder={t('place_of_manufacture_placeholder')} />
           </Form.Item>
           <Form.Item name="barcode" label={t('barcode')}>
-            <Input
+            <Space.Compact style={{ width: '100%' }}>
+              <Input placeholder={t('barcode_scan_placeholder')} />
+              <Button icon={<QrcodeOutlined />} onClick={() => setBarcodeScanOpen(true)}>
+                {t('scan_barcode')}
+              </Button>
+            </Space.Compact>
+          </Form.Item>
+          <Form.Item name="barcodes" label={t('barcode')}>
+            <Select
+              mode="tags"
+              tokenSeparators={[',', ' ']}
               placeholder={t('barcode_scan_placeholder')}
-              addonAfter={
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<QrcodeOutlined />}
-                  onClick={() => setBarcodeScanOpen(true)}
-                  style={{ padding: '0 8px' }}
-                >
-                  {t('scan_barcode')}
-                </Button>
-              }
+              options={[]}
             />
           </Form.Item>
           <Form.Item name="sku" label={t('sku')}>
@@ -517,7 +572,11 @@ const Products = () => {
             {editing?.image && !imageFile && (
               <div style={{ marginTop: 8 }}>
                 <img
-                  src={`${API_BASE}${editing.image.startsWith('/') ? '' : '/media/'}${editing.image}`}
+                  src={
+                    String(editing.image).startsWith('http')
+                      ? editing.image
+                      : `${API_BASE}${String(editing.image).startsWith('/') ? '' : '/media/'}${editing.image}`
+                  }
                   alt=""
                   style={{ maxHeight: 80 }}
                 />

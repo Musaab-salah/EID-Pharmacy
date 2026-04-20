@@ -18,6 +18,7 @@ import Suppliers from './pages/Suppliers'
 import PurchaseInvoices from './pages/PurchaseInvoices'
 import Sales from './pages/Sales'
 import SyncFromBatches from './pages/SyncFromBatches'
+import Transfers from './pages/Transfers'
 import { routerBasename } from './routerBase'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
@@ -174,6 +175,16 @@ const App = () => {
               <RequireAuth>
                 <AdminLayout>
                   <Reports />
+                </AdminLayout>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/transfers"
+            element={
+              <RequireAuth>
+                <AdminLayout>
+                  <Transfers />
                 </AdminLayout>
               </RequireAuth>
             }

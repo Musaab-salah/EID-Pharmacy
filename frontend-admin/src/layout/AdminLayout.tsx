@@ -24,6 +24,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
     { key: '/customers', label: <Link to="/customers">{t('customers')}</Link> },
     { key: '/payment-accounts', label: <Link to="/payment-accounts">{t('payment_accounts')}</Link> },
     { key: '/inventory', label: <Link to="/inventory">{t('inventory')}</Link> },
+    { key: '/transfers', label: <Link to="/transfers">Transfers</Link> },
     { key: '/suppliers', label: <Link to="/suppliers">{t('suppliers')}</Link> },
     { key: '/purchases', label: <Link to="/purchases">{t('purchase_invoices')}</Link> },
     { key: '/sales', label: <Link to="/sales">{t('sales')}</Link> },

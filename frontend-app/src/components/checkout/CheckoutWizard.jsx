@@ -7,7 +7,7 @@ import InvoicePreview from './InvoicePreview'
 import { useCheckout } from '../../context/CheckoutContext'
 import api from '../../api'
 import { getToken } from '../../auth'
-import { API_BASE } from '../../config'
+import { API_BASE, API_URL } from '../../config'
 
 const CheckoutWizard = () => {
   const { step, setStep } = useCheckout()
@@ -123,7 +123,11 @@ const CheckoutWizard = () => {
         barcode: p.barcode || '',
         categoryId: p.category || null,
         categoryName: p.category_name_ar || p.category_name_en || '',
-        image: p.image ? `${API_BASE}${p.image.startsWith('/') ? '' : '/media/'}${p.image}` : '',
+        image: p.image
+          ? String(p.image).startsWith('http')
+            ? p.image
+            : `${API_BASE}${String(p.image).startsWith('/') ? '' : '/media/'}${p.image}`
+          : '',
         price: Number(p.price || 0),
         stock,
         batches: productBatches,
@@ -162,7 +166,7 @@ const CheckoutWizard = () => {
 
   const lookupCustomer = async (phone) => {
     const token = getToken()
-    const res = await fetch(`${API_BASE}/customers/lookup/?phone=${encodeURIComponent(phone)}`, {
+    const res = await fetch(`${API_URL}/customers/lookup/?phone=${encodeURIComponent(phone)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
     return res.json()

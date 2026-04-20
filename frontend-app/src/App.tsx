@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import AppShell from './layout/AppShell'
 import { getToken } from './auth'
 import { routerBasename } from './routerBase'
+import Returns from './pages/Returns'
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const token = getToken()
@@ -27,6 +28,16 @@ const App = () => {
             element={
               <RequireAuth>
                 <AppShell />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/returns"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <Returns />
+                </AppShell>
               </RequireAuth>
             }
           />

@@ -55,6 +55,11 @@ const downloadPdf = (rows: any[], columns: { key: string; label: string }[], tit
   doc.save(filename)
 }
 
+const toNum = (v: unknown) => {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
 type MyDailySession = { login_at: string; logout_at?: string | null }
 type MyDailySale = { invoice_no: string; time: string; grand_total: number }
 type ReportInvoiceLine = {
@@ -94,6 +99,20 @@ const Reports = () => {
   })
   const [lowStockThreshold, setLowStockThreshold] = useState<number | ''>('')
   const [attendance, setAttendance] = useState<any[]>([])
+  const [transfers, setTransfers] = useState<any[]>([])
+  const [ledger, setLedger] = useState<any[]>([])
+  const [transferFilters, setTransferFilters] = useState({
+    date_from: dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
+    date_to: dayjs().format('YYYY-MM-DD'),
+    from_branch_id: '',
+    to_branch_id: '',
+    status: '',
+  })
+  const [ledgerFilters, setLedgerFilters] = useState({
+    date_from: dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
+    date_to: dayjs().format('YYYY-MM-DD'),
+    branch_id: '',
+  })
   const [attendanceDateFrom, setAttendanceDateFrom] = useState(dayjs().format('YYYY-MM-DD'))
   const [attendanceDateTo, setAttendanceDateTo] = useState(dayjs().format('YYYY-MM-DD'))
   const [attendanceUser, setAttendanceUser] = useState<string>('')
@@ -154,6 +173,24 @@ const Reports = () => {
       .get(`/reports/user-attendance/?${params}`)
       .then((res) => setAttendance(res.data || []))
       .catch(() => setAttendance([]))
+  }
+
+  const loadTransfers = () => {
+    const params = new URLSearchParams()
+    if (transferFilters.date_from) params.set('date_from', transferFilters.date_from)
+    if (transferFilters.date_to) params.set('date_to', transferFilters.date_to)
+    if (transferFilters.from_branch_id) params.set('from_branch_id', transferFilters.from_branch_id)
+    if (transferFilters.to_branch_id) params.set('to_branch_id', transferFilters.to_branch_id)
+    if (transferFilters.status) params.set('status', transferFilters.status)
+    api.get(`/reports/transfers/?${params}`).then((res) => setTransfers(res.data || []))
+  }
+
+  const loadLedger = () => {
+    const params = new URLSearchParams()
+    if (ledgerFilters.date_from) params.set('date_from', ledgerFilters.date_from)
+    if (ledgerFilters.date_to) params.set('date_to', ledgerFilters.date_to)
+    if (ledgerFilters.branch_id) params.set('branch_id', ledgerFilters.branch_id)
+    api.get(`/reports/stock-ledger/?${params}`).then((res) => setLedger(res.data || []))
   }
 
   useEffect(() => {
@@ -481,7 +518,7 @@ const Reports = () => {
                       render: (_, r) =>
                         (r.lines || []).map((l: any) => `${l.product_name_ar || l.product_name} × ${l.qty}`).join(', '),
                     },
-                    { title: t('total'), dataIndex: 'total', render: (v: number) => v?.toFixed(2) },
+                    { title: t('total'), dataIndex: 'total', render: (v: unknown) => toNum(v).toFixed(2) },
                   ]}
                   expandable={{
                     expandedRowRender: (record) => (
@@ -496,8 +533,8 @@ const Reports = () => {
                             render: (_: unknown, r: ReportInvoiceLine) => r.product_name_ar || r.product_name,
                           },
                           { title: t('qty'), dataIndex: 'qty' },
-                          { title: t('purchase_price'), dataIndex: 'unit_price', render: (v: number) => v?.toFixed(2) },
-                          { title: t('line_total'), dataIndex: 'line_total', render: (v: number) => v?.toFixed(2) },
+                          { title: t('purchase_price'), dataIndex: 'unit_price', render: (v: unknown) => toNum(v).toFixed(2) },
+                          { title: t('line_total'), dataIndex: 'line_total', render: (v: unknown) => toNum(v).toFixed(2) },
                         ]}
                         pagination={false}
                       />
@@ -584,7 +621,7 @@ const Reports = () => {
                       render: (_, r) =>
                         (r.lines || []).map((l: any) => `${l.product_name_ar || l.product_name} × ${l.qty}`).join(', '),
                     },
-                    { title: t('grand_total'), dataIndex: 'grand_total', render: (v: number) => v?.toFixed(2) },
+                    { title: t('grand_total'), dataIndex: 'grand_total', render: (v: unknown) => toNum(v).toFixed(2) },
                   ]}
                   expandable={{
                     expandedRowRender: (record) => (
@@ -599,13 +636,124 @@ const Reports = () => {
                             render: (_: unknown, r: ReportInvoiceLine) => r.product_name_ar || r.product_name,
                           },
                           { title: t('qty'), dataIndex: 'qty' },
-                          { title: t('price'), dataIndex: 'unit_price', render: (v: number) => v?.toFixed(2) },
-                          { title: t('line_total'), dataIndex: 'line_total', render: (v: number) => v?.toFixed(2) },
+                          { title: t('price'), dataIndex: 'unit_price', render: (v: unknown) => toNum(v).toFixed(2) },
+                          { title: t('line_total'), dataIndex: 'line_total', render: (v: unknown) => toNum(v).toFixed(2) },
                         ]}
                         pagination={false}
                       />
                     ),
                   }}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'transfers',
+            label: 'Transfers',
+            children: (
+              <Card>
+                <Space style={{ marginBottom: 16 }} wrap>
+                  <DatePicker.RangePicker
+                    value={[
+                      transferFilters.date_from ? dayjs(transferFilters.date_from) : null,
+                      transferFilters.date_to ? dayjs(transferFilters.date_to) : null,
+                    ]}
+                    onChange={(dates) => {
+                      const df = dates?.[0]
+                      const dt = dates?.[1]
+                      if (df) setTransferFilters((f) => ({ ...f, date_from: df.format('YYYY-MM-DD') }))
+                      if (dt) setTransferFilters((f) => ({ ...f, date_to: dt.format('YYYY-MM-DD') }))
+                    }}
+                  />
+                  <Select
+                    placeholder="From"
+                    allowClear
+                    style={{ width: 180 }}
+                    value={transferFilters.from_branch_id || 'all'}
+                    onChange={(v) => setTransferFilters((f) => ({ ...f, from_branch_id: v === 'all' ? '' : v || '' }))}
+                    options={[{ value: 'all', label: t('all') }, ...branches.map((b) => ({ value: String(b.id), label: b.name_ar || b.name_en }))]}
+                  />
+                  <Select
+                    placeholder="To"
+                    allowClear
+                    style={{ width: 180 }}
+                    value={transferFilters.to_branch_id || 'all'}
+                    onChange={(v) => setTransferFilters((f) => ({ ...f, to_branch_id: v === 'all' ? '' : v || '' }))}
+                    options={[{ value: 'all', label: t('all') }, ...branches.map((b) => ({ value: String(b.id), label: b.name_ar || b.name_en }))]}
+                  />
+                  <Select
+                    placeholder={t('status')}
+                    allowClear
+                    style={{ width: 160 }}
+                    value={transferFilters.status || 'all'}
+                    onChange={(v) => setTransferFilters((f) => ({ ...f, status: v === 'all' ? '' : v || '' }))}
+                    options={[
+                      { value: 'all', label: t('all') },
+                      { value: 'draft', label: 'draft' },
+                      { value: 'approved', label: 'approved' },
+                      { value: 'sent', label: 'sent' },
+                      { value: 'received', label: 'received' },
+                      { value: 'cancelled', label: 'cancelled' },
+                    ]}
+                  />
+                  <Button type="primary" onClick={loadTransfers}>{t('apply')}</Button>
+                  <Button onClick={() => downloadCsv(transfers, 'transfers.csv')}>{t('export_csv')}</Button>
+                </Space>
+                <Table
+                  rowKey="id"
+                  dataSource={transfers}
+                  columns={[
+                    { title: '#', dataIndex: 'id', width: 70 },
+                    { title: 'From', dataIndex: 'from_branch' },
+                    { title: 'To', dataIndex: 'to_branch' },
+                    { title: t('status'), dataIndex: 'status' },
+                    { title: 'Qty', dataIndex: 'total_qty' },
+                    { title: 'Lines', dataIndex: 'lines_count' },
+                    { title: t('date'), dataIndex: 'created_at', render: (v: string) => (v ? String(v).slice(0, 10) : '—') },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'ledger',
+            label: 'Stock ledger',
+            children: (
+              <Card>
+                <Space style={{ marginBottom: 16 }} wrap>
+                  <DatePicker.RangePicker
+                    value={[
+                      ledgerFilters.date_from ? dayjs(ledgerFilters.date_from) : null,
+                      ledgerFilters.date_to ? dayjs(ledgerFilters.date_to) : null,
+                    ]}
+                    onChange={(dates) => {
+                      const df = dates?.[0]
+                      const dt = dates?.[1]
+                      if (df) setLedgerFilters((f) => ({ ...f, date_from: df.format('YYYY-MM-DD') }))
+                      if (dt) setLedgerFilters((f) => ({ ...f, date_to: dt.format('YYYY-MM-DD') }))
+                    }}
+                  />
+                  <Select
+                    placeholder={t('branch')}
+                    allowClear
+                    style={{ width: 220 }}
+                    value={ledgerFilters.branch_id || 'all'}
+                    onChange={(v) => setLedgerFilters((f) => ({ ...f, branch_id: v === 'all' ? '' : v || '' }))}
+                    options={[{ value: 'all', label: t('all') }, ...branches.map((b) => ({ value: String(b.id), label: b.name_ar || b.name_en }))]}
+                  />
+                  <Button type="primary" onClick={loadLedger}>{t('apply')}</Button>
+                  <Button onClick={() => downloadCsv(ledger, 'stock_ledger.csv')}>{t('export_csv')}</Button>
+                </Space>
+                <Table
+                  rowKey="id"
+                  dataSource={ledger}
+                  columns={[
+                    { title: t('date'), dataIndex: 'created_at', render: (v: string) => (v ? String(v).slice(0, 19).replace('T', ' ') : '—') },
+                    { title: t('actions'), dataIndex: 'action' },
+                    { title: 'Batch', dataIndex: 'entity_id' },
+                    { title: 'After', dataIndex: 'after', render: (v: any) => (v ? JSON.stringify(v) : '—') },
+                  ]}
+                  pagination={{ pageSize: 25 }}
                 />
               </Card>
             ),

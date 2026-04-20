@@ -25,6 +25,12 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_CASHIER)
     branch = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL)
+    branches = models.ManyToManyField(
+        Branch,
+        blank=True,
+        related_name="users",
+        help_text="Branches the user can operate on. If empty, falls back to `branch`.",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username", "name"]
@@ -120,6 +126,37 @@ class Product(models.Model):
     def __str__(self) -> str:
         return self.name_en
 
+
+class ProductBarcode(models.Model):
+    TYPE_PRIMARY = "primary"
+    TYPE_ALT = "alt"
+    TYPE_INTERNAL = "internal"
+    TYPE_CHOICES = [
+        (TYPE_PRIMARY, "Primary"),
+        (TYPE_ALT, "Alternative"),
+        (TYPE_INTERNAL, "Internal"),
+    ]
+
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="barcodes"
+    )
+    code = models.CharField(max_length=100, db_index=True)
+    barcode_type = models.CharField(
+        max_length=20, choices=TYPE_CHOICES, default=TYPE_ALT
+    )
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                models.functions.Lower("code"),
+                name="uniq_product_barcode_code_ci",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} ({self.product_id})"
 
 class Batch(models.Model):
     UNIT_PILL = "pill"
@@ -251,6 +288,13 @@ class SaleInvoice(models.Model):
     )
     payment_proof = models.ImageField(
         upload_to="payment_proofs/", null=True, blank=True
+    )
+    shift = models.ForeignKey(
+        "CashierShift",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invoices",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -386,6 +430,145 @@ class AuditLog(models.Model):
     def __str__(self) -> str:
         return f"{self.entity} {self.action}"
 
+
+class StockTransfer(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_APPROVED = "approved"
+    STATUS_SENT = "sent"
+    STATUS_RECEIVED = "received"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_RECEIVED, "Received"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    from_branch = models.ForeignKey(
+        Branch, on_delete=models.PROTECT, related_name="transfers_out"
+    )
+    to_branch = models.ForeignKey(
+        Branch, on_delete=models.PROTECT, related_name="transfers_in"
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="created_transfers"
+    )
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_transfers",
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+
+    def __str__(self) -> str:
+        return f"Transfer {self.id} {self.from_branch_id}->{self.to_branch_id}"
+
+
+class StockTransferLine(models.Model):
+    transfer = models.ForeignKey(
+        StockTransfer, on_delete=models.CASCADE, related_name="lines"
+    )
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    source_batch = models.ForeignKey(
+        Batch, on_delete=models.PROTECT, related_name="transfer_lines"
+    )
+    qty = models.IntegerField()
+    batch_no = models.CharField(max_length=100)
+    expiry_date = models.DateField()
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self) -> str:
+        return f"T{self.transfer_id} {self.product_id} x{self.qty}"
+
+
+class CashierShift(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name="shifts")
+    cashier = models.ForeignKey(User, on_delete=models.PROTECT, related_name="shifts")
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    opening_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    closing_cash = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    variance = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        ordering = ["-opened_at"]
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+    def __str__(self) -> str:
+        return f"Shift {self.id} {self.cashier_id}@{self.branch_id}"
+
+
+class SaleReturn(models.Model):
+    original_invoice = models.ForeignKey(
+        SaleInvoice, on_delete=models.PROTECT, related_name="returns"
+    )
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name="sale_returns")
+    cashier = models.ForeignKey(User, on_delete=models.PROTECT, related_name="sale_returns")
+    reason = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Return {self.id} for invoice {self.original_invoice_id}"
+
+
+class SaleReturnLine(models.Model):
+    sale_return = models.ForeignKey(
+        SaleReturn, on_delete=models.CASCADE, related_name="lines"
+    )
+    sale_line = models.ForeignKey(SaleLine, on_delete=models.PROTECT)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    batch = models.ForeignKey(Batch, on_delete=models.PROTECT)
+    qty = models.IntegerField()
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    line_total = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self) -> str:
+        return f"ReturnLine {self.id} x{self.qty}"
+
+
+class EInvoiceSubmission(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_SUBMITTED = "submitted"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_SUBMITTED, "Submitted"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    invoice = models.OneToOneField(
+        SaleInvoice, on_delete=models.CASCADE, related_name="e_invoice"
+    )
+    provider = models.CharField(max_length=50, default="dummy")
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    uuid = models.CharField(max_length=100, blank=True)
+    qr_text = models.TextField(blank=True)
+    payload = models.JSONField(null=True, blank=True)
+    response = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"EInvoice {self.invoice_id} {self.status}"
 
 class Notification(models.Model):
     """System alerts (e.g. purchase due date approaching)."""

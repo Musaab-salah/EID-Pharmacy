@@ -294,6 +294,16 @@ const AppHeader = () => {
                   {user?.name || t('user')}
                 </div>
                 <button
+                  onClick={() => {
+                    setShowUserMenu(false)
+                    navigate('/returns')
+                  }}
+                  className="w-full text-start px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <span>↩️</span>
+                  المرتجعات
+                </button>
+                <button
                   onClick={openDailyReport}
                   className="w-full text-start px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                 >

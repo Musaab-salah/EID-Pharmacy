@@ -1,12 +1,22 @@
 /**
- * Aligns with Vite `base`: local dev uses /app/; Vercel production uses / (root).
+ * Aligns with Vite `base`: default /app/; production Vercel build uses / (root).
  */
-export const viteBase = import.meta.env.BASE_URL
+const _trim = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
+let appBasePath = _trim === '/' ? '' : _trim
 
-export const appBasePath = viteBase.replace(/\/+$/, '')
+if (
+  appBasePath === '' &&
+  typeof window !== 'undefined' &&
+  /^\/app(\/|$)/.test(window.location.pathname)
+) {
+  appBasePath = '/app'
+}
 
-export const routerBasename =
-  !appBasePath || appBasePath === '/' ? undefined : appBasePath
+export const viteBase = appBasePath ? `${appBasePath}/` : '/'
+
+export { appBasePath }
+
+export const routerBasename = appBasePath === '' ? undefined : appBasePath
 
 export const loginHref = `${viteBase}login`.replace(/([^:]\/)\/+/g, '$1')
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useCheckout } from '../../context/CheckoutContext'
 import ProductCard from './ProductCard'
 import BarcodeInput from '../pos/BarcodeInput'
@@ -24,6 +24,19 @@ const ProductsPage = ({
   const [showQuickCreate, setShowQuickCreate] = useState(false)
   const [quickCreateBarcode, setQuickCreateBarcode] = useState('')
   const [barcodeError, setBarcodeError] = useState('')
+  const barcodeRef = useRef(null)
+
+  const focusBarcode = () => {
+    try {
+      barcodeRef.current?.focus?.()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    focusBarcode()
+  }, [])
 
   const addProductToCart = (product, batch, pillsOptions) => {
     const p = {
@@ -51,15 +64,18 @@ const ProductsPage = ({
     if (added) {
       setPulseId(p.id)
       setTimeout(() => setPulseId(null), 200)
+      setTimeout(() => focusBarcode(), 0)
     }
     return added
   }
 
   const handleBarcode = async () => {
-    const term = (barcode || '').trim()
+    const term = String(barcode || '')
+      .replace(/[\s\r\n\t]+/g, '')
+      .trim()
     if (!term) return
     setBarcodeError('')
-    const match = products.find((p) => p.barcode && p.barcode.toLowerCase() === term)
+    const match = products.find((p) => p.barcode && p.barcode.toLowerCase() === term.toLowerCase())
     if (match) {
       const batch = match.batches[0]
       addProductToCart(match, batch)
@@ -90,6 +106,7 @@ const ProductsPage = ({
         setBarcodeError(err?.response?.data?.detail || 'خطأ في البحث')
       }
     }
+    setTimeout(() => focusBarcode(), 0)
   }
 
   const handleQuickCreateSave = async (payload) => {
@@ -137,10 +154,12 @@ const ProductsPage = ({
             />
           </label>
           <BarcodeInput
+            ref={barcodeRef}
             value={barcode}
             onChange={setBarcode}
             onEnter={handleBarcode}
             placeholder="باركود (Enter)"
+            autoFocus
           />
           {barcodeError && (
             <span className="text-red-600 text-sm">{barcodeError}</span>
@@ -216,6 +235,7 @@ const ProductsPage = ({
         onClose={() => {
           setShowQuickCreate(false)
           setQuickCreateBarcode('')
+          setTimeout(() => focusBarcode(), 0)
         }}
         barcode={quickCreateBarcode}
         onSave={handleQuickCreateSave}

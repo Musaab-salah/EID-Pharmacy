@@ -1,14 +1,26 @@
 /**
- * Aligns with Vite `base`: local dev uses /admin/; Vercel production uses / (root).
+ * Aligns with Vite `base`: default /admin/; production Vercel build uses / (root).
  */
-export const viteBase = import.meta.env.BASE_URL
+const _trim = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
+let appBasePath = _trim === '/' ? '' : _trim
 
-/** Path prefix without trailing slash; empty string when app is at site root. */
-export const appBasePath = viteBase.replace(/\/+$/, '')
+// If the bundle was built with base `/` but the page is served under /admin/ (e.g. proxy),
+// still set basename so "/admin/" resolves to route "/".
+if (
+  appBasePath === '' &&
+  typeof window !== 'undefined' &&
+  /^\/admin(\/|$)/.test(window.location.pathname)
+) {
+  appBasePath = '/admin'
+}
+
+export const viteBase = appBasePath ? `${appBasePath}/` : '/'
+
+/** Path prefix without trailing slash; empty when app is at site root. */
+export { appBasePath }
 
 /** React Router `basename` — omit when app lives at domain root. */
-export const routerBasename =
-  !appBasePath || appBasePath === '/' ? undefined : appBasePath
+export const routerBasename = appBasePath === '' ? undefined : appBasePath
 
 /** Login URL for 401 redirects */
 export const loginHref = `${viteBase}login`.replace(/([^:]\/)\/+/g, '$1')

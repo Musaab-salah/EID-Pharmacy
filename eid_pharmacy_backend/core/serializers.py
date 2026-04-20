@@ -12,6 +12,7 @@ from .models import (
     Customer,
     PaymentAccount,
     Product,
+    ProductBarcode,
     PurchaseDueDate,
     PurchaseInvoice,
     PurchaseLine,
@@ -19,6 +20,12 @@ from .models import (
     SaleLine,
     Supplier,
     User,
+    StockTransfer,
+    StockTransferLine,
+    CashierShift,
+    SaleReturn,
+    SaleReturnLine,
+    EInvoiceSubmission,
 )
 
 
@@ -45,6 +52,9 @@ class BranchSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    branches = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Branch.objects.all(), required=False
+    )
 
     class Meta:
         model = User
@@ -55,6 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
             "username",
             "role",
             "branch",
+            "branches",
             "password",
             "is_active",
         ]
@@ -86,6 +97,7 @@ class UserSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        branches = validated_data.pop("branches", [])
         password = validated_data.pop("password", None)
         user = User(**validated_data)
         if password:
@@ -93,9 +105,12 @@ class UserSerializer(serializers.ModelSerializer):
         else:
             user.set_unusable_password()
         user.save()
+        if branches is not None:
+            user.branches.set(branches)
         return user
 
     def update(self, instance, validated_data):
+        branches = validated_data.pop("branches", None)
         password = validated_data.pop("password", None)
         if password is not None and str(password).strip() == "":
             password = None
@@ -104,6 +119,8 @@ class UserSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
         instance.save()
+        if branches is not None:
+            instance.branches.set(branches)
         return instance
 
 
@@ -156,6 +173,35 @@ class ProductSerializer(serializers.ModelSerializer):
     branches = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Branch.objects.all(), required=False
     )
+    barcodes = serializers.SerializerMethodField()
+    barcode_list = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        write_only=True,
+        help_text="Optional list of additional barcodes for this product.",
+    )
+
+    def get_barcodes(self, obj):
+        # Return all known barcode codes (including legacy Product.barcode if set).
+        codes = []
+        if obj.barcode:
+            codes.append(obj.barcode)
+        qs = getattr(obj, "barcodes", None)
+        if qs is not None:
+            codes.extend([b.code for b in qs.all().order_by("-is_primary", "id")])
+        # unique, preserve order
+        seen = set()
+        out = []
+        for c in codes:
+            s = str(c).strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(s)
+        return out
 
     def get_category_name_en(self, obj):
         return obj.category.name_en if obj.category else None
@@ -237,6 +283,7 @@ class ProductSerializer(serializers.ModelSerializer):
         from datetime import date, timedelta
 
         branches = validated_data.pop("branches", [])
+        barcode_list = validated_data.pop("barcode_list", None)
         product = Product.objects.create(**validated_data)
         product.branches.set(branches)
         for branch in branches:
@@ -250,12 +297,15 @@ class ProductSerializer(serializers.ModelSerializer):
                     "unit_cost": product.purchase_price,
                 },
             )
+        if barcode_list:
+            self._save_extra_barcodes(product, barcode_list)
         return product
 
     def update(self, instance, validated_data):
         from datetime import date, timedelta
 
         branches = validated_data.pop("branches", None)
+        barcode_list = validated_data.pop("barcode_list", None)
         for key, value in validated_data.items():
             setattr(instance, key, value)
         instance.save()
@@ -272,7 +322,60 @@ class ProductSerializer(serializers.ModelSerializer):
                         "unit_cost": instance.purchase_price,
                     },
                 )
+        if barcode_list is not None:
+            self._replace_extra_barcodes(instance, barcode_list)
         return instance
+
+    def _normalize_codes(self, codes):
+        out = []
+        seen = set()
+        for c in codes or []:
+            s = str(c).strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(s)
+        return out
+
+    def _save_extra_barcodes(self, product: Product, codes):
+        normalized = self._normalize_codes(codes)
+        primary = (product.barcode or "").strip()
+        for code in normalized:
+            if primary and code.lower() == primary.lower():
+                continue
+            ProductBarcode.objects.get_or_create(
+                code=code,
+                defaults={
+                    "product": product,
+                    "barcode_type": ProductBarcode.TYPE_ALT,
+                    "is_primary": False,
+                },
+            )
+
+    def _replace_extra_barcodes(self, product: Product, codes):
+        normalized = self._normalize_codes(codes)
+        primary = (product.barcode or "").strip()
+        normalized = [
+            c for c in normalized if not (primary and c.lower() == primary.lower())
+        ]
+        ProductBarcode.objects.filter(product=product).exclude(
+            code__in=normalized
+        ).delete()
+        existing = set(
+            ProductBarcode.objects.filter(product=product).values_list("code", flat=True)
+        )
+        for code in normalized:
+            if code in existing:
+                continue
+            ProductBarcode.objects.create(
+                product=product,
+                code=code,
+                barcode_type=ProductBarcode.TYPE_ALT,
+                is_primary=False,
+            )
 
 
 class BatchSerializer(serializers.ModelSerializer):
@@ -568,4 +671,77 @@ class InventoryAdjustSerializer(serializers.Serializer):
             if not tid:
                 raise serializers.ValidationError({"target_branch_id": "Target branch is required for transfer."})
         return data
+
+
+class StockTransferLineWriteSerializer(serializers.Serializer):
+    source_batch = serializers.IntegerField(min_value=1)
+    qty = serializers.IntegerField(min_value=1)
+
+
+class StockTransferLineSerializer(serializers.ModelSerializer):
+    product_name_en = serializers.CharField(source="product.name_en", read_only=True)
+    product_name_ar = serializers.CharField(source="product.name_ar", read_only=True)
+
+    class Meta:
+        model = StockTransferLine
+        fields = "__all__"
+
+
+class StockTransferSerializer(serializers.ModelSerializer):
+    lines = StockTransferLineWriteSerializer(many=True, write_only=True)
+    lines_detail = StockTransferLineSerializer(source="lines", many=True, read_only=True)
+    from_branch_name = serializers.CharField(source="from_branch.name_en", read_only=True)
+    to_branch_name = serializers.CharField(source="to_branch.name_en", read_only=True)
+
+    class Meta:
+        model = StockTransfer
+        fields = "__all__"
+
+
+class CashierShiftSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name_en", read_only=True)
+    cashier_name = serializers.CharField(source="cashier.name", read_only=True)
+
+    class Meta:
+        model = CashierShift
+        fields = "__all__"
+
+
+class OpenShiftSerializer(serializers.Serializer):
+    branch = serializers.IntegerField(min_value=1)
+    opening_cash = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+
+class CloseShiftSerializer(serializers.Serializer):
+    closing_cash = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class SaleReturnLineWriteSerializer(serializers.Serializer):
+    sale_line = serializers.IntegerField(min_value=1)
+    qty = serializers.IntegerField(min_value=1)
+
+
+class SaleReturnLineSerializer(serializers.ModelSerializer):
+    product_name_en = serializers.CharField(source="product.name_en", read_only=True)
+    product_name_ar = serializers.CharField(source="product.name_ar", read_only=True)
+
+    class Meta:
+        model = SaleReturnLine
+        fields = "__all__"
+
+
+class SaleReturnSerializer(serializers.ModelSerializer):
+    lines = SaleReturnLineWriteSerializer(many=True, write_only=True)
+    lines_detail = SaleReturnLineSerializer(source="lines", many=True, read_only=True)
+
+    class Meta:
+        model = SaleReturn
+        fields = "__all__"
+
+
+class EInvoiceSubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EInvoiceSubmission
+        fields = "__all__"
+
 

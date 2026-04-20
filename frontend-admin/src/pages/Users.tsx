@@ -11,6 +11,7 @@ type User = {
   username: string
   role: string
   branch: number | null
+  branches?: number[]
   is_active: boolean
 }
 
@@ -47,7 +48,7 @@ const Users = () => {
   const handleEdit = (record: User) => {
     setEditing(record)
     setOpen(true)
-    form.setFieldsValue(record)
+    form.setFieldsValue({ ...record, branches: record.branches ?? (record.branch ? [record.branch] : []) })
   }
 
   const handleDelete = async (record: User) => {
@@ -129,6 +130,14 @@ const Users = () => {
           <Form.Item name="branch" label={t('branch')}>
             <Select
               allowClear
+              options={branches.map((b) => ({ value: b.id, label: b.name_en }))}
+            />
+          </Form.Item>
+          <Form.Item name="branches" label={`${t('branches')} (${t('optional') || ''})`}>
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder={t('select_branches')}
               options={branches.map((b) => ({ value: b.id, label: b.name_en }))}
             />
           </Form.Item>

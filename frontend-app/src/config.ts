@@ -8,7 +8,7 @@ function resolveApiUrl(): string {
     return String(raw).trim().replace(/\/$/, '')
   }
   if (import.meta.env.DEV) {
-    return 'http://localhost:8000/api'
+    return '/api'
   }
   throw new Error(
     'VITE_API_URL is not set. For production builds, define it in .env.production or the host (e.g. https://api.example.com/api).',
@@ -20,4 +20,6 @@ export const API_URL = resolveApiUrl()
 /** Origin without /api — for media URLs and direct fetch */
 export const API_BASE = API_URL.startsWith('http')
   ? API_URL.replace(/\/api\/?$/, '')
-  : `${typeof window !== 'undefined' ? window.location.origin : ''}${API_URL.replace(/\/api\/?$/, '') || ''}`
+  : typeof window !== 'undefined'
+    ? window.location.origin
+    : ''
