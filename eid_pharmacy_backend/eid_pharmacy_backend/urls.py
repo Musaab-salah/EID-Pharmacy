@@ -18,6 +18,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.urls import include, path, re_path
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -32,6 +33,7 @@ def health(_request):
 
 # Django admin at /backend-admin/ to avoid conflict with React Admin at /admin/
 urlpatterns = [
+    path("", lambda _r: redirect("/app/", permanent=False)),
     path("health/", health),
     path('backend-admin/', admin.site.urls),
     path('api/', include('core.urls')),
