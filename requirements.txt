@@ -1,0 +1,2 @@
+-r eid_pharmacy_backend/requirements.txt
+
