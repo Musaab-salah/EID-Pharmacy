@@ -20,4 +20,4 @@ ENV DJANGO_SETTINGS_MODULE=eid_pharmacy_backend.settings
 RUN cd /app/eid_pharmacy_backend && python manage.py collectstatic --noinput
 
 EXPOSE 10000
-CMD ["sh", "-c", "cd /app/eid_pharmacy_backend && python manage.py migrate --noinput && cd /app && exec gunicorn eid_pharmacy_backend.wsgi:application --config gunicorn.conf.py"]
+CMD ["sh", "-c", "cd /app/eid_pharmacy_backend && python manage.py migrate --noinput && python manage.py bootstrap_superuser || true && cd /app && exec gunicorn eid_pharmacy_backend.wsgi:application --config gunicorn.conf.py"]
