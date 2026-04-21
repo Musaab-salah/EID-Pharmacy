@@ -21,6 +21,13 @@ def main() -> int:
     if migrate.returncode != 0:
         return migrate.returncode
 
+    # Optional: first superuser from BOOTSTRAP_SUPERUSER_EMAIL / BOOTSTRAP_SUPERUSER_PASSWORD
+    subprocess.run(
+        [sys.executable, "manage.py", "bootstrap_superuser"],
+        cwd=backend_dir,
+        check=False,
+    )
+
     # 2) Start gunicorn
     # The ":" is inside Python, not Render Start Command.
     cmd = [
