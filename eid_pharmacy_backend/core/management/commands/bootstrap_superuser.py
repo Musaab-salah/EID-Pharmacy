@@ -9,7 +9,11 @@ Optional:
   BOOTSTRAP_SUPERUSER_NAME=Admin
   BOOTSTRAP_SUPERUSER_USERNAME=admin   (defaults to local part of email)
 
-Runs only when no superuser exists yet.
+  BOOTSTRAP_SUPERUSER_FORCE=1   # always upsert this email (password + staff flags), even if
+                                # other superusers already exist (fixes "401 forever" when
+                                # bootstrap previously skipped).
+
+Default (no FORCE): runs only when no superuser exists yet.
 """
 
 import os
@@ -17,6 +21,10 @@ import os
 from django.core.management.base import BaseCommand
 
 from core.models import User
+
+
+def _truthy(val: str) -> bool:
+    return val.strip().lower() in ("1", "true", "yes", "on")
 
 
 class Command(BaseCommand):
@@ -29,10 +37,13 @@ class Command(BaseCommand):
             self.stdout.write("bootstrap_superuser: BOOTSTRAP_* not set, skipping.")
             return
 
-        if User.objects.filter(is_superuser=True).exists():
+        force = _truthy(os.environ.get("BOOTSTRAP_SUPERUSER_FORCE", ""))
+
+        if not force and User.objects.filter(is_superuser=True).exists():
             self.stdout.write(
                 self.style.WARNING(
-                    "bootstrap_superuser: a superuser already exists; skipping."
+                    "bootstrap_superuser: a superuser already exists; skipping. "
+                    "Set BOOTSTRAP_SUPERUSER_FORCE=1 to upsert BOOTSTRAP_SUPERUSER_EMAIL anyway."
                 )
             )
             return
@@ -53,7 +64,8 @@ class Command(BaseCommand):
             user.save()
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"bootstrap_superuser: promoted existing user {email} to superuser."
+                    f"bootstrap_superuser: updated superuser credentials for {email}"
+                    + (" (FORCE)" if force else " (promoted)")
                 )
             )
             return
@@ -76,5 +88,8 @@ class Command(BaseCommand):
             is_active=True,
         )
         self.stdout.write(
-            self.style.SUCCESS(f"bootstrap_superuser: created superuser {user.email}")
+            self.style.SUCCESS(
+                f"bootstrap_superuser: created superuser {user.email}"
+                + (" (FORCE)" if force else "")
+            )
         )

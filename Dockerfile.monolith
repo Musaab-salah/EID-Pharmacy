@@ -33,4 +33,4 @@ ENV DJANGO_SETTINGS_MODULE=eid_pharmacy_backend.settings
 RUN cd /app/eid_pharmacy_backend && python manage.py collectstatic --noinput
 
 EXPOSE 10000
-CMD ["sh", "-c", "cd /app/eid_pharmacy_backend && python manage.py migrate --noinput && exec gunicorn eid_pharmacy_backend.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers 2 --timeout 120"]
+CMD ["sh", "-c", "cd /app/eid_pharmacy_backend && python manage.py migrate --noinput && python manage.py bootstrap_superuser && exec gunicorn eid_pharmacy_backend.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers 2 --timeout 120"]
