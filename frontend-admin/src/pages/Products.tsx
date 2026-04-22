@@ -31,11 +31,23 @@ type Product = {
   image?: string
   place_of_manufacture?: string
   product_type?: string
+  dosage_form?: string
   strips_per_box?: number
   pills_per_strip?: number
   price_per_strip?: number
   price_per_box?: number
 }
+
+const DOSAGE_FORMS = [
+  { value: 'tablets', label: 'أقراص (Tablets)' },
+  { value: 'capsules', label: 'كبسولات (Capsules)' },
+  { value: 'syrup', label: 'شراب (Syrup)' },
+  { value: 'injection', label: 'حقن (Injection)' },
+  { value: 'ointment', label: 'مراهم / كريمات' },
+  { value: 'spray', label: 'بخاخات' },
+  { value: 'drops', label: 'قطرات (عين / أنف / أذن)' },
+  { value: 'suppository', label: 'تحاميل' },
+]
 
 const Products = () => {
   const { t, i18n } = useTranslation()
@@ -293,6 +305,13 @@ const Products = () => {
           { title: t('name_en'), dataIndex: 'name_en' },
           { title: t('name_ar'), dataIndex: 'name_ar' },
           { title: t('category'), dataIndex: 'category_name_en' },
+          {
+            title: t('dosage_form'),
+            dataIndex: 'dosage_form',
+            filters: DOSAGE_FORMS.map((f) => ({ text: f.label, value: f.value })),
+            onFilter: (value, record) => String(record.dosage_form || '') === String(value || ''),
+            render: (v: string) => DOSAGE_FORMS.find((x) => x.value === v)?.label || '—',
+          },
           { title: t('supplier'), dataIndex: 'supplier_name_ar', render: (_v: unknown, r: Product) => r.supplier_name_ar || r.supplier_name_en || '-' },
           {
             title: t('product_branches'),
@@ -404,6 +423,9 @@ const Products = () => {
                 { value: 'pills', label: t('product_type_pills') },
               ]}
             />
+          </Form.Item>
+          <Form.Item name="dosage_form" label={t('dosage_form')}>
+            <Select allowClear options={DOSAGE_FORMS} />
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(prev, curr) => prev.product_type !== curr.product_type}>
             {({ getFieldValue }) =>

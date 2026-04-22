@@ -114,6 +114,29 @@ class Product(models.Model):
     product_type = models.CharField(
         max_length=20, choices=TYPE_CHOICES, default=TYPE_DEFAULT
     )
+
+    # Dosage form (Tablets, Capsules, Syrup, etc.) for filtering/grouping in UI.
+    FORM_TABLETS = "tablets"
+    FORM_CAPSULES = "capsules"
+    FORM_SYRUP = "syrup"
+    FORM_INJECTION = "injection"
+    FORM_OINTMENT = "ointment"
+    FORM_SPRAY = "spray"
+    FORM_DROPS = "drops"
+    FORM_SUPPOSITORY = "suppository"
+    FORM_CHOICES = [
+        (FORM_TABLETS, "Tablets"),
+        (FORM_CAPSULES, "Capsules"),
+        (FORM_SYRUP, "Syrup"),
+        (FORM_INJECTION, "Injection"),
+        (FORM_OINTMENT, "Ointment / Cream"),
+        (FORM_SPRAY, "Spray"),
+        (FORM_DROPS, "Drops"),
+        (FORM_SUPPOSITORY, "Suppository"),
+    ]
+    dosage_form = models.CharField(
+        max_length=30, choices=FORM_CHOICES, blank=True, default=""
+    )
     strips_per_box = models.PositiveIntegerField(default=1, blank=True)
     pills_per_strip = models.PositiveIntegerField(default=1, blank=True)
     price_per_strip = models.DecimalField(

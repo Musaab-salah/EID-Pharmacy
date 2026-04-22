@@ -105,6 +105,7 @@
   "select_supplier": "اختر المورد",
   "add_new_supplier": "إضافة مورد جديد",
   "product_type": "نوع المنتج",
+  "dosage_form": "شكل الدواء",
   "product_type_default": "عادي",
   "product_type_pills": "حبوب (أدوية)",
   "pills_pricing": "تسعير الحبوب",
